@@ -24,3 +24,11 @@ Untuk konfirmasi pesanan, pelanggan mengunduh PDF pesanan dan melampirkannya ber
 - Checkout memakai data lokal untuk provinsi, kabupaten/kota, kecamatan, desa/kelurahan dan kode pos Indonesia. Alamat di negara lain diisi manual. Sumber berlisensi MIT tercantum di [lisensi data wilayah](app/delivery-regions-license.txt). [Referensi wilayah](https://github.com/cahyadsn/wilayah) · [Referensi kode pos](https://github.com/cahyadsn/wilayah_kodepos).
 
 Mode awal adalah demo lokal. Peluncuran operasional memerlukan aset dan pengaturan dari pemilik serta pemeriksaan persyaratan verifikasi usia dan iklan. Rujuk [PP 28 Tahun 2024](https://peraturan.bpk.go.id/Details/294077/pp-no-28-tahun-2024) dan [Keputusan Menteri Kesehatan 963/2026](https://jdih.kemkes.go.id/documents/keputusan-menteri-kesehatan-nomor-hk0107menkes9632026).
+
+## Demo di Railway
+
+1. Hubungkan repo ke layanan Railway dengan builder **Railpack**. Gunakan start command bawaan agar Railpack menjalankan FrankenPHP dengan `Caddyfile`.
+2. Di tab **Variables** layanan, tambahkan `RAILPACK_PHP_EXTENSIONS=gd,mbstring,pdo_sqlite`.
+3. Tambah **Volume** ke layanan dengan mount path `/app/storage` agar pesanan, SQLite, dan unggahan tersimpan saat redeploy. Untuk demo baru, biarkan aplikasi mengisi database secara otomatis pada kunjungan pertama.
+4. Setelah deployment aktif, buka **Settings → Networking → Public Networking → Generate Domain**. Pakai port yang terdeteksi otomatis. Jika Railway meminta port dan variabel `PORT` belum diatur, gunakan `8080`.
+5. Buka URL HTTPS, cek tampilan katalog dan detail produk, lalu lakukan satu checkout demo dan coba unduh PDF.

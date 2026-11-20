@@ -1,0 +1,27 @@
+{
+	admin off
+	persist_config off
+	auto_https off
+	frankenphp
+}
+
+:{$PORT:8080} {
+	root * /app
+	encode zstd br gzip
+
+	@private path /app /app/* /storage /storage/* /.git /.git/*
+	respond @private 404
+
+	@assets path /assets/style.css /assets/site.js /Tobapia-01.png /image.png
+	handle @assets {
+		file_server
+	}
+
+	handle {
+		php_server {
+			try_files index.php
+			file_server off
+			env HTTPS on
+		}
+	}
+}
