@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.railpack.com",
   "deploy": {
-    "aptPackages": ["...", "fonts-noto-cjk"]
+    "aptPackages": ["fonts-dejavu-core", "fonts-noto-cjk"]
   }
 }

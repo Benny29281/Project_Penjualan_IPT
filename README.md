@@ -28,7 +28,7 @@ Mode awal adalah demo lokal. Peluncuran operasional memerlukan aset dan pengatur
 ## Demo di Railway
 
 1. Hubungkan repo ke layanan Railway dengan builder **Railpack**. Gunakan start command bawaan agar Railpack menjalankan FrankenPHP dengan `Caddyfile`.
-2. Di tab **Variables** layanan, tambahkan `RAILPACK_PHP_EXTENSIONS=gd,mbstring,pdo_sqlite`.
+2. Railpack membaca ekstensi PHP dari `composer.json` dan memasang font PDF dari `railpack.json`. Batas unggahan diatur lewat `Caddyfile`.
 3. Tambah **Volume** ke layanan dengan mount path `/app/storage` agar pesanan, SQLite, dan unggahan tersimpan saat redeploy. Untuk demo baru, biarkan aplikasi mengisi database secara otomatis pada kunjungan pertama.
 4. Setelah deployment aktif, buka **Settings → Networking → Public Networking → Generate Domain**. Pakai port yang terdeteksi otomatis. Jika Railway meminta port dan variabel `PORT` belum diatur, gunakan `8080`.
-5. Buka URL HTTPS, cek tampilan katalog dan detail produk, lalu lakukan satu checkout demo dan coba unduh PDF.
+5. Buka URL HTTPS. Pastikan permintaan ke `/storage/tobapia.sqlite` mengembalikan HTTP 404. Cek katalog dan detail produk, lalu lakukan satu checkout demo dan coba unduh PDF.
