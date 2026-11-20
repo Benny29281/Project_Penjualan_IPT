@@ -1,0 +1,8 @@
+Options -Indexes
+RewriteEngine On
+RewriteRule ^(?:app|storage)(?:/|$) - [F,L,NC]
+RewriteRule ^pdf-closing\.png\.jpeg$ - [F,L,NC]
+RewriteRule "^email notification-big\.jpg\.jpeg$" - [F,L,NC]
+RewriteRule \.(?:md|sql|sqlite|ini|log|ps1|bat)$ - [F,L,NC]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ index.php [L,QSA]
