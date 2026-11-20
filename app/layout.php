@@ -1,4 +1,7 @@
 <?php
+function assetUrl(string $filename): string {
+    return path('/assets/'.$filename).'?v='.filemtime(__DIR__.'/../assets/'.$filename);
+}
 function startPage(string $title, string $class=''): void { ?>
 <!doctype html>
 <html lang="<?=h(str_starts_with($class,'admin') ? 'id' : lang())?>">
@@ -7,12 +10,19 @@ function startPage(string $title, string $class=''): void { ?>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#183e35">
 <title><?=h($title)?> · Tobapia</title>
-<link rel="stylesheet" href="<?=h(path('/assets/style.css'))?>">
-<script defer src="<?=h(path('/assets/site.js'))?>"></script>
+<link rel="stylesheet" href="<?=h(assetUrl('style.css'))?>">
+<script defer src="<?=h(assetUrl('site.js'))?>"></script>
 </head>
 <body class="<?=h($class)?>">
 <?php }
 function endPage(): void { ?></body></html><?php }
+function backLink(string $destination, bool $useHistory=true): void { ?>
+<a class="back-link" href="<?=h(path($destination))?>" aria-label="<?=h(t('go_back'))?>"<?=$useHistory ? ' data-back-link' : ''?>>
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M19 12H5m7-7-7 7 7 7"/>
+    </svg>
+</a>
+<?php }
 function brand(array $s, string $target='/'): void { ?>
 <a class="brand <?=$s['logo'] ? '' : 'brand-default'?>" href="<?=h(path($target))?>" aria-label="Tobapia">
     <?php if ($s['logo']): ?>
@@ -22,29 +32,23 @@ function brand(array $s, string $target='/'): void { ?>
     <?php endif ?>
 </a>
 <?php }
-function languages(): void {
-    echo form('language','language');
-    foreach (['en'=>'EN','id'=>'ID','zh'=>'中文','ko'=>'한국어'] as $code=>$label) {
-        ?><button name="language" value="<?=h($code)?>" aria-pressed="<?=$code===lang() ? 'true':'false'?>"><?=h($label)?></button><?php
-    }
-    echo '</form>';
-}
+function languages(): void { ?>
+<?=form('language','language')?>
+    <select name="language" data-language-select aria-label="<?=h(t('language_label'))?>">
+        <?php foreach (['en'=>'EN','id'=>'ID','zh'=>'中文','ko'=>'한국어'] as $code=>$label): ?>
+            <option value="<?=h($code)?>" <?=$code===lang()?'selected':''?>><?=h($label)?></option>
+        <?php endforeach ?>
+    </select>
+    <noscript><button class="button secondary" type="submit"><?=h(t('language_apply'))?></button></noscript>
+</form>
+<?php }
 function storeHeader(array $s, bool $gate=false): void { ?>
 <?php if (!$gate): ?><a class="skip" href="<?=h(path('/#products'))?>"><?=h(t('skip'))?></a><?php endif ?>
 <header class="site-header">
-    <div class="shell header-inner <?=$gate?'header-gate':''?>">
+    <div class="shell header-inner">
         <div class="header-identity">
             <?php brand($s); ?>
-            <span class="header-divider" aria-hidden="true"></span>
-            <span class="catalog-label"><?=h(t('catalog'))?></span>
         </div>
-        <?php if (!$gate): ?>
-        <nav class="header-nav" aria-label="<?=h(t('home'))?>">
-            <a href="<?=h(path('/'))?>"><?=h(t('home'))?></a>
-            <a href="<?=h(path('/#products'))?>"><?=h(t('all'))?></a>
-            <a href="<?=h(path('/about'))?>"><?=h(t('about'))?></a>
-        </nav>
-        <?php endif ?>
         <div class="header-actions">
             <div class="header-preferences">
                 <span class="age-pill">21+</span>
@@ -57,7 +61,7 @@ function storeHeader(array $s, bool $gate=false): void { ?>
                     </a>
                     <a class="cart-link" href="<?=h(path('/cart'))?>">
                         <span class="bag-icon" aria-hidden="true"></span>
-                        <span class="cart-label"><?=h(t('cart'))?></span>
+                        <span class="visually-hidden"><?=h(t('cart'))?></span>
                         <span class="badge" data-cart-count><?=array_sum(cart())?></span>
                     </a>
                 </div>
@@ -65,7 +69,6 @@ function storeHeader(array $s, bool $gate=false): void { ?>
         </div>
     </div>
 </header>
-<?php if ($s['mode']==='demo'): ?><div class="demo-band"><?=h(t('demo'))?></div><?php endif ?>
 <?php if (!$gate): ?><div class="warning-band"><p class="shell"><?=h(warning($s))?></p></div><?php endif ?>
 <?php }
 function storeFooter(array $s, bool $gate=false): void { ?>
@@ -90,8 +93,8 @@ function alertMessage(string $error=''): void {
 function field(string $key,string $label,string $value='', string $type='text', bool $required=false, string $extra=''): void { ?>
 <label class="field"><span><?=h($label)?></span><input type="<?=h($type)?>" name="<?=h($key)?>" value="<?=h($value)?>" <?=$required ? 'required':''?> <?=$extra?>></label>
 <?php }
-function area(string $key,string $label,string $value='',bool $required=false): void { ?>
-<label class="field"><span><?=h($label)?></span><textarea name="<?=h($key)?>" rows="3" maxlength="2000" <?=$required ? 'required':''?>><?=h($value)?></textarea></label>
+function area(string $key,string $label,string $value='',bool $required=false,int $max=2000,string $extra=''): void { ?>
+<label class="field"><span><?=h($label)?></span><textarea name="<?=h($key)?>" rows="3" maxlength="<?=$max?>" <?=$required ? 'required':''?> <?=$extra?>><?=h($value)?></textarea></label>
 <?php }
 function selectField(string $key, string $label, array $options, string $selected='', string $extra=''): void { ?>
 <label class="field"><span><?=h($label)?></span><select name="<?=h($key)?>" <?=$extra?>>

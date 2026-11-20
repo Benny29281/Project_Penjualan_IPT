@@ -37,7 +37,7 @@ function pdfWrap(string $text,int $size,string $font,int $width): array {
     }
     return $lines;
 }
-function pdfOrderPages(array $order,string $locale,string $filename,bool $priced): array {
+function pdfOrderPages(array $order,string $locale,string $filename): array {
     $margin=64; $right=1176; $bottom=1610;
     $canvases=[]; $canvas=null; $palette=[]; $y=0;
 
@@ -86,9 +86,8 @@ function pdfOrderPages(array $order,string $locale,string $filename,bool $priced
     $items=items($order['id']);
     $y+=12;
     $paragraph(t('pdf_line_items',$locale).': '.count($items),18,'muted');
-    $headers=['#',t('item',$locale),t('country',$locale),t('unit',$locale),t('quantity',$locale)];
-    if ($priced) array_push($headers,t('pdf_unit_price',$locale),t('subtotal',$locale));
-    $widths=$priced ? [44,376,166,100,78,164,184] : [44,566,216,163,123];
+    $headers=['#',t('item',$locale),t('country',$locale),t('pdf_order_unit',$locale),t('quantity',$locale),t('pdf_unit_price',$locale),t('subtotal',$locale)];
+    $widths=[44,376,166,100,100,153,173];
     $columns=[];
     $x=$margin;
     foreach ($widths as $width) {
@@ -133,38 +132,21 @@ function pdfOrderPages(array $order,string $locale,string $filename,bool $priced
         $names=decode($item['names']);
         $name=productName($names,$locale);
         $alternate=($names['name_zh'] ?? '')!==$name ? ($names['name_zh'] ?? '') : '';
-        $cells=[(string)($index+1),$name.($alternate ? "\n".$alternate : ''),t($item['edition'],$locale),t($item['unit'],$locale),(string)$item['qty']];
-        if ($priced) array_push($cells,money($item['price']),money($item['price']*$item['qty']));
+        if (!str_starts_with(mb_strtolower($name),mb_strtolower($item['category']))) $name=$item['category'].' '.$name;
+        $cells=[(string)($index+1),$name.($alternate ? "\n".$alternate : ''),t($item['edition'],$locale),t($item['unit'],$locale),(string)$item['qty'],money($item['price']),money($item['price']*$item['qty'])];
         $row=$renderRow($cells);
         if ($ensure($heightOf($row))) $paintRow($headerRow,true);
         $paintRow($row);
     }
     $y+=36;
-    if ($priced) {
-        $totals=totals($order,$locale);
-        $ensure(39*count($totals)+45);
-        foreach ($totals as $label=>$value) {
-            $total=$label===t('total',$locale);
-            if ($total) imagefilledrectangle($canvas,$margin,$y-26,$right,$y+13,$palette['surface']);
-            $write($label,$margin+9,$y,$total ? 24 : 20,$total?'ink':'muted',$total);
-            $write($value,$right-9,$y,$total ? 24 : 20,'green',true,true);
-            $y+=39;
-        }
-    }
-    $y+=8;
-    $paragraph(t('pdf_confirmation',$locale),18,'muted');
-    if ($priced && $order['qr'] && is_file(DATA.'/'.$order['qr'])) {
-        $image=imagecreatefromstring(file_get_contents(DATA.'/'.$order['qr']));
-        if ($image) {
-            $y+=15;
-            $scale=min(420/imagesx($image),500/imagesy($image));
-            $width=(int)round(imagesx($image)*$scale);
-            $height=(int)round(imagesy($image)*$scale);
-            $ensure($height+60);
-            $paragraph(t('qr',$locale),21,'green',true);
-            imagecopyresized($canvas,$image,$margin,$y-9,0,0,$width,$height,imagesx($image),imagesy($image));
-            imagedestroy($image);
-        }
+    $totals=totals($order,$locale);
+    $ensure(39*count($totals));
+    foreach ($totals as $label=>$value) {
+        $total=$label===t('total',$locale);
+        if ($total) imagefilledrectangle($canvas,$margin,$y-30,$right,$y+13,$palette['surface']);
+        $write($label,$margin+9,$y,$total ? 24 : 20,$total?'ink':'muted',$total);
+        $write($value,$right-9,$y,$total ? 24 : 20,'green',true,true);
+        $y+=39;
     }
     $pages=[];
     foreach ($canvases as $index=>$page) {
@@ -179,9 +161,8 @@ function pdfOrderPages(array $order,string $locale,string $filename,bool $priced
     }
     return $pages;
 }
-function sendPdf(array $order,string $locale,string $variant='05'): never {
-    $filename=orderDisplayNumber($order).'_'.$variant;
-    $pages=pdfOrderPages($order,$locale,$filename,$variant==='05');
+function orderPdf(array $order,string $locale,string $filename): string {
+    $pages=pdfOrderPages($order,$locale,$filename);
     $objects=[1=>'<< /Type /Catalog /Pages 2 0 R >>'];
     $children=[];
     foreach ($pages as $i=>$page) {
@@ -202,6 +183,11 @@ function sendPdf(array $order,string $locale,string $variant='05'): never {
     $pdf.="xref\n0 ".(count($objects)+1)."\n0000000000 65535 f \n";
     foreach ($offsets as $offset) $pdf.=sprintf("%010d 00000 n \n",$offset);
     $pdf.="trailer\n<< /Size ".(count($objects)+1)." /Root 1 0 R >>\nstartxref\n".$xref."\n%%EOF\n";
+    return $pdf;
+}
+function sendPdf(array $order,string $locale): never {
+    $filename=orderDisplayNumber($order).'_05';
+    $pdf=orderPdf($order,$locale,$filename);
     header('Content-Type: application/pdf');
     header('Content-Disposition: attachment; filename="'.$filename.'.pdf"');
     header('Content-Length: '.strlen($pdf));

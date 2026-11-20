@@ -1,3 +1,15 @@
+const languageSelect = document.querySelector('[data-language-select]');
+languageSelect?.addEventListener('change', () => languageSelect.form.requestSubmit());
+
+const pageBack = document.querySelector('[data-back-link]');
+pageBack?.addEventListener('click', event => {
+  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  if (window.navigation?.canGoBack) {
+    event.preventDefault();
+    window.history.back();
+  }
+});
+
 const search = document.querySelector('[data-search]');
 const products = Array.from(document.querySelectorAll('[data-product]'));
 const filters = { category: '', edition: '' };
@@ -102,6 +114,19 @@ document.addEventListener('click', async event => {
   }
 });
 
+const acknowledgment = document.querySelector('#confirm-order [name="confirmation_ack"]');
+if (acknowledgment) {
+  const confirmButton = acknowledgment.form.querySelector('button[type="submit"]');
+  const syncConfirmation = () => { confirmButton.disabled = !acknowledgment.checked; };
+  acknowledgment.addEventListener('change', syncConfirmation);
+  acknowledgment.closest('dialog').addEventListener('close', () => {
+    acknowledgment.checked = false;
+    syncConfirmation();
+  });
+  window.addEventListener('pageshow', syncConfirmation);
+  syncConfirmation();
+}
+
 const quantityInput = document.querySelector('#product-quantity');
 if (quantityInput) {
   const buttons = quantityInput.parentElement.querySelectorAll('[data-quantity-step]');
@@ -116,6 +141,45 @@ if (quantityInput) {
       if (button.dataset.quantityStep === '1') quantityInput.stepUp();
       else quantityInput.stepDown();
       syncQuantity();
+    });
+  }
+  const form = quantityInput.form;
+  if (form.classList.contains('add-to-cart-form')) {
+    const submit = form.querySelector('.detail-add');
+    const status = document.querySelector('[data-cart-status]');
+    const report = (message, failed = false) => {
+      status.classList.toggle('alert-error', failed);
+      status.hidden = false;
+      status.textContent = message;
+    };
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (submit.disabled) return;
+      const data = new FormData(form);
+      submit.disabled = true;
+      status.hidden = true;
+      try {
+        const response = await fetch(form.action, { method: 'POST', headers: { Accept: 'application/json' }, body: data });
+        const result = await response.json();
+        if (!response.ok) {
+          report(result.error || status.dataset.failure, true);
+          return;
+        }
+        for (const badge of document.querySelectorAll('[data-cart-count]')) badge.textContent = result.count;
+        quantityInput.max = result.remaining;
+        if (result.remaining > 0) {
+          quantityInput.value = Math.max(1, Math.min(quantityInput.valueAsNumber || 1, result.remaining));
+          syncQuantity();
+        } else {
+          quantityInput.closest('.detail-quantity').hidden = true;
+          submit.textContent = status.dataset.limit;
+        }
+        report(result.message);
+      } catch {
+        report(status.dataset.failure, true);
+      } finally {
+        submit.disabled = Number(quantityInput.max) < 1;
+      }
     });
   }
 }
@@ -150,8 +214,11 @@ if (delivery) {
   const manualHelp = delivery.querySelector('[data-manual-help]');
   const selectFields = Array.from(localFields.querySelectorAll('[data-region-select]'));
   const postal = delivery.querySelector('[data-delivery-postal]');
+  const postalHelp = delivery.querySelector('[data-postal-automatic]');
+  const loading = delivery.querySelector('[data-region-loading]');
   const error = delivery.querySelector('[data-region-error-box]');
   const retry = delivery.querySelector('[data-region-retry]');
+  const submit = delivery.closest('form').querySelector('[data-delivery-submit]');
   let request;
   let retryIndex = -1;
 
@@ -159,6 +226,7 @@ if (delivery) {
     const local = country.value === 'ID';
     const code = local ? selectFields.at(-1).selectedOptions[0]?.dataset.postal : '';
     postal.readOnly = Boolean(code);
+    postalHelp.hidden = !code;
     if (local) {
       postal.pattern = '[0-9]{5}';
       postal.inputMode = 'numeric';
@@ -170,21 +238,29 @@ if (delivery) {
     else if (clear) postal.value = '';
   }
 
-  function resetOptions(select) {
-    select.replaceChildren(new Option(delivery.dataset.regionPlaceholder, ''));
+  function resetOptions(select, label) {
+    select.replaceChildren(new Option(label, ''));
     select.disabled = true;
+  }
+
+  function regionStatus(isLoading, failed = false) {
+    loading.hidden = !isLoading;
+    error.hidden = !failed;
+    localFields.setAttribute('aria-busy', String(isLoading));
+    submit.disabled = isLoading || failed;
   }
 
   async function updateRegions(index) {
     request?.abort();
-    error.hidden = true;
-    for (const select of selectFields.slice(index + 1)) resetOptions(select);
+    regionStatus(false);
+    for (const select of selectFields.slice(index + 1)) resetOptions(select, select.dataset.parentPrompt);
     updatePostal(true);
     const next = selectFields[index + 1];
     const parent = selectFields[index].value;
     if (!next || !parent) return;
     const controller = new AbortController();
     request = controller;
+    regionStatus(true);
     const url = new URL(delivery.dataset.regionUrl, window.location.href);
     url.searchParams.set('parent', parent);
     try {
@@ -192,16 +268,18 @@ if (delivery) {
       if (!response.ok) throw new Error();
       const regions = await response.json();
       if (controller.signal.aborted) return;
+      resetOptions(next, delivery.dataset.regionPlaceholder);
       for (const region of regions) {
         const option = new Option(region.name, region.id);
         option.dataset.postal = region.postal;
         next.add(option);
       }
       next.disabled = false;
-    } catch (failure) {
+      regionStatus(false);
+    } catch {
       if (controller.signal.aborted) return;
       retryIndex = index;
-      error.hidden = false;
+      regionStatus(false, true);
     }
   }
 
@@ -211,7 +289,7 @@ if (delivery) {
     manualFields.hidden = manualFields.disabled = local;
     manualHelp.hidden = local;
     if (!local) request?.abort();
-    error.hidden = true;
+    regionStatus(false);
     updatePostal(true);
     if (local) {
       const incomplete = selectFields.findIndex((select, index) => index > 0 && select.disabled && selectFields[index - 1].value);

@@ -1,5 +1,4 @@
 <?php
-const PAYMENT_REFERENCE = __DIR__.'/../pdf-closing.png.jpeg';
 const EMAIL_CONFIRMATION_IMAGE = __DIR__.'/../email notification-big.jpg.jpeg';
 
 function agePage(array $s,string $error): void {
@@ -37,9 +36,9 @@ function storePage(array $s,string $error): void {
     if (ROUTE==='/') { catalog($s,$error); }
     else { ?>
     <main class="shell page-shell">
-        <?php alertMessage($error);
+        <?php if (!$product) alertMessage($error);
         if ($isProduct) {
-            if ($product) productDetail($product,isset($productRoute[2]));
+            if ($product) productDetail($product,isset($productRoute[2]),$error);
             else heading(t('product_missing'));
         } elseif ($buyToken) {
             cartPage($s,true,$buyToken);
@@ -72,7 +71,6 @@ function catalog(array $s,string $error): void {
     $products=rows("SELECT * FROM products WHERE status='published' OR (status='draft' AND demo=1 AND ?='demo') ORDER BY CASE WHEN category='TEREA' THEN 0 ELSE 1 END,id",[$s['mode']]);
     $byProduct=[];
     foreach (rows('SELECT * FROM variants ORDER BY id') as $v) $byProduct[$v['product_id']][]=$v;
-    $cart=cart();
     $visible=[];
     foreach ($products as $p) {
         $p['variants']=catalogVariants($p,$byProduct[$p['id']] ?? [],$s);
@@ -123,10 +121,6 @@ function catalog(array $s,string $error): void {
         </div>
     </section>
 </main>
-<div class="quick-cart" <?=array_sum($cart) ? '' : 'hidden'?>>
-    <div><strong><?=array_sum($cart) ? h(money(quote($cart,$s)['subtotal'])) : h(money(0))?></strong><span><?=h(t('subtotal'))?></span></div>
-    <a class="button primary" href="<?=h(path('/cart'))?>"><?=h(t('view_cart'))?></a>
-</div>
 <?php }
 function productCard(array $p): void {
     $out=!array_filter($p['variants'],fn($v)=>$v['stock']>0);
@@ -166,7 +160,7 @@ function productPlaceholder(array $product): void {
     ?>
     <div class="placeholder <?=$pack?'placeholder-pack':'placeholder-device'?>" aria-hidden="true"><span><?=h($pack?'TEREA':'ILUMA')?></span></div>
 <?php }
-function productDetail(array $product,bool $buyNow): void {
+function productDetail(array $product,bool $buyNow,string $error=''): void {
     $variants=array_column($product['variants'],null,'unit');
     $cart=$buyNow ? [] : cart();
     $remaining=[];
@@ -186,6 +180,7 @@ function productDetail(array $product,bool $buyNow): void {
     ],decode($product['specifications']));
     ?>
 <nav class="product-breadcrumb" aria-label="<?=h(t('catalog'))?>">
+    <?php backLink('/#products',useHistory:false); ?>
     <a href="<?=h(path('/#products'))?>"><?=h(t('all'))?></a>
     <span aria-hidden="true">/</span>
     <span><?=h($product['category'])?></span>
@@ -228,17 +223,17 @@ function productDetail(array $product,bool $buyNow): void {
         <h1><?=h($name)?></h1>
         <p class="detail-price"><strong><?=h(money($variant['price']))?></strong> <span>/ <?=h(t($unit))?></span></p>
         <?php if ($product['flavour']): ?><p class="detail-flavour"><?=h($product['flavour'])?></p><?php endif ?>
-        <?php if ($description!==''): ?>
+        <?php if ($description!=='' || $isTerea): ?>
         <section class="detail-description">
-            <h2><?=h(t('product_description'))?></h2>
-            <p class="break-lines"><?=h($description)?></p>
+            <?php if ($description!==''): ?>
+                <h2><?=h(t('product_description'))?></h2>
+                <p class="break-lines"><?=h($description)?></p>
+            <?php endif ?>
+            <?php if ($isTerea): ?><button type="button" class="text-button" data-dialog="unit-guide"><?=h(t('unit_guide'))?></button><?php endif ?>
         </section>
         <?php endif ?>
         <div class="detail-choices">
-            <div class="section-heading">
-                <p><?=h(t('choose_unit'))?></p>
-                <?php if ($isTerea): ?><button type="button" class="text-button" data-dialog="unit-guide"><?=h(t('unit_guide'))?></button><?php endif ?>
-            </div>
+            <p><?=h(t('choose_unit'))?></p>
             <ul class="unit-options">
                 <?php foreach ($variants as $option=>$available): ?>
                     <li>
@@ -250,7 +245,7 @@ function productDetail(array $product,bool $buyNow): void {
                 <?php endforeach ?>
             </ul>
         </div>
-        <?=form($buyNow ? 'buy_now' : 'add_product','detail-form',false,ROUTE.'?unit='.rawurlencode($unit))?>
+        <?=form($buyNow ? 'buy_now' : 'add_product',$buyNow ? 'detail-form' : 'detail-form add-to-cart-form',false,ROUTE.'?unit='.rawurlencode($unit))?>
             <input type="hidden" name="variant" value="<?=(int)$variant['id']?>">
             <?php if ($remaining[$unit]): ?>
                 <div class="detail-quantity">
@@ -264,6 +259,10 @@ function productDetail(array $product,bool $buyNow): void {
             <?php endif ?>
             <button class="button primary full detail-add" <?=$remaining[$unit]?'':'disabled'?>><?=h(t($remaining[$unit] ? ($buyNow ? 'buy_now' : 'add_cart') : ($variant['stock']>0 ? 'cart_limit' : 'out')))?></button>
         </form>
+        <?php alertMessage($error); ?>
+        <?php if (!$buyNow): ?>
+            <p class="alert product-cart-status" role="status" data-cart-status data-failure="<?=h(t('refresh'))?>" data-limit="<?=h(t('cart_limit'))?>" hidden></p>
+        <?php endif ?>
         <?php if ($variant['stock']>0): ?>
             <a class="detail-alternate text-button" href="<?=h(path('/products/'.$product['id'].($buyNow ? '' : '/buy')).'?unit='.rawurlencode($unit).'#purchase')?>"><?=h(t($buyNow ? 'add_cart' : 'buy_now'))?></a>
         <?php endif ?>
@@ -304,50 +303,71 @@ function deliveryFields(): void {
     $local=$country==='ID';
     $parent=$local ? 'ID' : '';
     $postal='';
+    $parentPrompts=['province'=>'select_country_first','city'=>'select_province_first','district'=>'select_city_first','village'=>'select_district_first'];
     ?>
     <div class="delivery-fields" data-delivery-fields data-region-url="<?=h(path('/delivery-regions'))?>" data-region-placeholder="<?=h(t('select_region'))?>">
-        <div class="delivery-field-grid">
-            <?php field('name',t('name'),input('name') ?: (currentUser()['name'] ?? ''),'text',true,'autocomplete="shipping name" minlength="2" maxlength="200"');
-            field('phone',t('phone_number'),input('phone'),'tel',true,'autocomplete="shipping tel" maxlength="30" aria-describedby="delivery-phone-help"'); ?>
-        </div>
-        <p class="muted" id="delivery-phone-help"><?=h(t('international_phone'))?></p>
-        <?php selectField('delivery_country',t('delivery_country'),$countries,$country,'autocomplete="shipping country" required data-delivery-country'); ?>
-        <fieldset class="delivery-field-grid delivery-region-group" data-indonesian-regions <?=$local?'':'hidden disabled'?>>
-            <legend class="visually-hidden"><?=h(t('delivery_regions'))?></legend>
-            <?php foreach (DELIVERY_LEVELS as $level): 
-                $options=$parent ? array_column(deliveryRegions($parent),null,'id') : [];
-                $selected=input('delivery_'.$level.'_id',13);
-                if (!isset($options[$selected])) $selected='';
-                ?>
-                <label class="field">
-                    <span><?=h(t('delivery_'.$level))?></span>
-                    <select name="delivery_<?=$level?>_id" data-region-select required <?=$parent?'':'disabled'?>>
-                        <option value=""><?=h(t('select_region'))?></option>
-                        <?php foreach ($options as $region): ?>
-                            <option value="<?=h($region['id'])?>" data-postal="<?=h($region['postal'])?>" <?=$selected===$region['id']?'selected':''?>><?=h($region['name'])?></option>
-                        <?php endforeach ?>
-                    </select>
-                </label>
-                <?php $parent=$selected; $postal=$options[$selected]['postal'] ?? ''; ?>
-            <?php endforeach ?>
+        <p class="muted"><?=h(t('delivery_required_fields'))?></p>
+        <fieldset class="delivery-section">
+            <legend><?=h(t('delivery_contact'))?></legend>
+            <div class="delivery-field-grid">
+                <?php field('name',t('name'),input('name') ?: (currentUser()['name'] ?? ''),'text',true,'autocomplete="shipping name" minlength="2" maxlength="200"');
+                field('phone',t('phone_number'),input('phone'),'tel',true,'autocomplete="shipping tel" maxlength="30" aria-describedby="delivery-phone-help"'); ?>
+            </div>
+            <p class="muted delivery-help" id="delivery-phone-help"><?=h(t('international_phone'))?></p>
         </fieldset>
-        <fieldset class="delivery-field-grid delivery-region-group" data-manual-regions <?=$local?'hidden disabled':''?>>
-            <legend class="visually-hidden"><?=h(t('delivery_regions'))?></legend>
-            <?php foreach (DELIVERY_LEVELS as $level) field('delivery_'.$level,t('delivery_'.$level),input('delivery_'.$level,120),'text',true,'maxlength="120"'); ?>
+        <fieldset class="delivery-section">
+            <legend><?=h(t('delivery_address'))?></legend>
+            <div class="delivery-address-fields">
+                <?php selectField('delivery_country',t('delivery_country'),$countries,$country,'autocomplete="shipping country" required data-delivery-country'); ?>
+                <fieldset class="delivery-field-grid delivery-region-group" data-indonesian-regions <?=$local?'':'hidden disabled'?>>
+                    <legend class="visually-hidden"><?=h(t('delivery_regions'))?></legend>
+                    <?php foreach (DELIVERY_LEVELS as $level):
+                        $options=$parent ? array_column(deliveryRegions($parent),null,'id') : [];
+                        $selected=input('delivery_'.$level.'_id',13);
+                        if (!isset($options[$selected])) $selected='';
+                        ?>
+                        <label class="field">
+                            <span><?=h(t('delivery_'.$level))?></span>
+                            <select name="delivery_<?=$level?>_id" data-region-select data-parent-prompt="<?=h(t($parentPrompts[$level]))?>" required <?=$parent?'':'disabled'?>>
+                                <option value=""><?=h(t($parent ? 'select_region' : $parentPrompts[$level]))?></option>
+                                <?php foreach ($options as $region): ?>
+                                    <option value="<?=h($region['id'])?>" data-postal="<?=h($region['postal'])?>" <?=$selected===$region['id']?'selected':''?>><?=h($region['name'])?></option>
+                                <?php endforeach ?>
+                            </select>
+                        </label>
+                        <?php $parent=$selected; $postal=$options[$selected]['postal'] ?? ''; ?>
+                    <?php endforeach ?>
+                </fieldset>
+                <fieldset class="delivery-field-grid delivery-region-group" data-manual-regions <?=$local?'hidden disabled':''?>>
+                    <legend class="visually-hidden"><?=h(t('delivery_regions'))?></legend>
+                    <?php foreach (DELIVERY_LEVELS as $level) field('delivery_'.$level,t('delivery_'.$level),input('delivery_'.$level,120),'text',true,'maxlength="120"'); ?>
+                </fieldset>
+                <p class="muted" data-manual-help <?=$local?'hidden':''?>><?=h(t('manual_delivery_regions'))?></p>
+                <p class="muted" role="status" data-region-loading hidden><?=h(t('delivery_loading'))?></p>
+                <div class="delivery-region-error" data-region-error-box hidden>
+                    <p role="status"><?=h(t('delivery_load_error'))?></p>
+                    <button class="text-button" type="button" data-region-retry><?=h(t('delivery_retry'))?></button>
+                </div>
+                <noscript><button class="button secondary" type="submit" name="action" value="delivery_fields" formnovalidate><?=h(t('load_regions'))?></button></noscript>
+                <?php field('postal_code',t('postal_code'),$postal ?: input('postal_code',16),'text',true,'autocomplete="shipping postal-code" maxlength="16" data-delivery-postal'.($local ? ' inputmode="numeric" pattern="[0-9]{5}"' : '').($postal ? ' readonly' : '')); ?>
+                <p class="muted delivery-help" data-postal-automatic <?=$postal?'':'hidden'?>><?=h(t('delivery_postal_automatic'))?></p>
+                <?php area('address',t('street_address'),input('address',1200),true,1200,'autocomplete="shipping street-address" aria-describedby="delivery-street-help"'); ?>
+                <p class="muted delivery-help" id="delivery-street-help"><?=h(t('delivery_street_help'))?></p>
+            </div>
         </fieldset>
-        <p class="muted" data-manual-help <?=$local?'hidden':''?>><?=h(t('manual_delivery_regions'))?></p>
-        <div class="delivery-region-error" data-region-error-box hidden>
-            <p role="status"><?=h(t('delivery_load_error'))?></p>
-            <button class="text-button" type="button" data-region-retry><?=h(t('delivery_retry'))?></button>
-        </div>
-        <noscript><button class="button secondary" type="submit" name="action" value="delivery_fields" formnovalidate><?=h(t('load_regions'))?></button></noscript>
-        <?php field('postal_code',t('postal_code'),$postal ?: input('postal_code',16),'text',true,'autocomplete="shipping postal-code" maxlength="16" data-delivery-postal'.($local ? ' inputmode="numeric" pattern="[0-9]{5}"' : '').($postal ? ' readonly' : ''));
-        area('address',t('street_address'),input('address',1200),true);
-        area('notes',t('notes'),input('notes',800)); ?>
+        <?php area('notes',t('notes'),input('notes',800),false,800); ?>
     </div>
 <?php }
 function cartPage(array $s,bool $checkout,?string $buyToken=null): void {
-    heading($checkout ? t('checkout') : t('cart'),t('catalog'));
+    ?>
+    <header class="page-title">
+        <div class="order-catalog-kicker">
+            <?php backLink($checkout && $buyToken===null ? '/cart' : '/#products'); ?>
+            <p class="eyebrow"><?=h(t('catalog'))?></p>
+        </div>
+        <h1><?=h(t($checkout ? 'checkout' : 'cart'))?></h1>
+    </header>
+    <?php
     $cart=$buyToken ? ($_SESSION['buy_now'][$buyToken] ?? []) : cart();
     $quote=quote($cart,$s);
     if ($buyToken && (!$cart || $quote['invalid'])): ?>
@@ -362,7 +382,7 @@ function cartPage(array $s,bool $checkout,?string $buyToken=null): void {
             <input type="hidden" name="nonce" value="<?=h($buyToken ?? ($_SESSION['checkout_nonce'] ??= bin2hex(random_bytes(24))))?>">
             <?php deliveryFields(); ?>
             <label class="check"><input type="checkbox" name="age" value="1" required <?=input('age')==='1'?'checked':''?>> <span><?=h(t('age_statement'))?></span></label>
-            <button class="button primary"><?=h(t('place'))?></button>
+            <button class="button primary" data-delivery-submit><?=h(t('place'))?></button>
             </form>
             <?php else: ?>
                 <?php if ($quote['invalid']): ?><p class="alert alert-error"><?=h(t('unavailable'))?></p><?php endif ?>
@@ -441,25 +461,25 @@ function ordersPage(): void {
 <?php }
 function orderPage(array $order,array $s): void {
     $url='/orders/'.$order['number'];
+    $downloadUrl=path($url.'/pdf/05');
+    $paymentIsPending=paymentPending($order);
+    $confirmationSent=!empty($order['confirmation_sent_at']);
+    $confirmationNotice=$paymentIsPending || $confirmationSent ? null : t('confirm_order_unavailable');
     ?>
     <div class="order-detail-page">
-        <nav class="order-breadcrumb" aria-label="<?=h(t('orders'))?>"><a href="<?=h(path('/orders'))?>"><?=h(t('orders'))?></a></nav>
+        <nav class="order-breadcrumb" aria-label="<?=h(t('orders'))?>">
+            <?php backLink('/orders'); ?>
+            <a href="<?=h(path('/orders'))?>"><?=h(t('orders'))?></a>
+        </nav>
         <header class="order-header">
-            <div>
-                <h1><?=h(t('order_detail'))?></h1>
-                <div class="order-header-meta">
-                    <strong class="order-number"><?=h(orderDisplayNumber($order))?></strong>
-                    <time datetime="<?=h(gmdate(DATE_ATOM,strtotime($order['created'].' UTC')))?>"><?=h(shortDate($order['created']))?></time>
-                </div>
-                <div class="order-statuses">
-                    <?php statusTag($order['status']); ?>
-                    <?php if ($order['demo']): ?><span class="order-demo"><?=h(t('demo'))?></span><?php endif ?>
-                </div>
+            <h1><?=h(t('order_detail'))?></h1>
+            <div class="order-header-meta">
+                <strong class="order-number"><?=h(orderDisplayNumber($order))?></strong>
+                <time datetime="<?=h(gmdate(DATE_ATOM,strtotime($order['created'].' UTC')))?>"><?=h(shortDate($order['created']))?></time>
             </div>
-            <div class="order-document-actions">
-                <a class="button secondary" href="<?=h(path($url.'/pdf/05'))?>"><?=h(t('pdf_with_price'))?></a>
-                <a class="button secondary" href="<?=h(path($url.'/pdf/03'))?>"><?=h(t('pdf_without_price'))?></a>
-                <?=form('reorder')?><input type="hidden" name="number" value="<?=h($order['number'])?>"><button class="button secondary"><?=h(t('reorder'))?></button></form>
+            <div class="order-statuses">
+                <?php statusTag($order['status']); ?>
+                <?php if ($order['demo']): ?><span class="order-demo"><?=h(t('demo'))?></span><?php endif ?>
             </div>
         </header>
         <div class="order-content">
@@ -469,34 +489,67 @@ function orderPage(array $order,array $s): void {
                 <div class="order-totals"><?php showTotals($order); ?></div>
             </section>
             <div class="order-sidebar stack">
-                <?php if (paymentPending($order)): orderPaymentPanel($order,$s,$url); endif ?>
+                <?php if ($paymentIsPending): orderPaymentPanel($order,$s,$downloadUrl,$confirmationSent); endif ?>
                 <section class="panel"><h2><?=h(t('timeline'))?></h2>
                     <?php timeline($order); ?>
                     <?php if ($order['tracking']): ?><p class="order-tracking"><strong><?=h(t('tracking'))?></strong> <?=h($order['tracking'])?></p><?php endif ?>
                 </section>
             </div>
-            <section class="panel order-delivery-panel">
-                <h2><?=h(t('delivery'))?></h2>
-                <dl class="order-recipient">
-                    <div><dt><?=h(t('recipient'))?></dt><dd><?=h($order['name'])?></dd></div>
-                    <div><dt><?=h(t('phone_number'))?></dt><dd>+<?=h($order['phone'])?></dd></div>
-                    <div class="order-address"><dt><?=h(t('address'))?></dt><dd class="break-lines"><?=h($order['address'])?></dd></div>
-                    <?php if ($order['notes']): ?><div class="order-address"><dt><?=h(t('notes'))?></dt><dd class="break-lines"><?=h($order['notes'])?></dd></div><?php endif ?>
-                </dl>
-                <?php if (is_file(EMAIL_CONFIRMATION_IMAGE)): ?>
-                <details class="order-disclosure">
-                    <summary><?=h(t('email_confirmation'))?></summary>
-                    <a class="order-email-notice" href="<?=h(path($url.'/confirmation-image'))?>" target="_blank" rel="noopener" aria-label="<?=h(t('email_confirmation_open'))?>">
-                        <img src="<?=h(path($url.'/confirmation-image'))?>" width="1135" height="1600" loading="lazy" alt="<?=h(t('email_confirmation_image'))?>">
-                    </a>
-                </details>
-                <?php endif ?>
-            </section>
+            <div class="order-delivery-stack stack">
+                <section class="panel">
+                    <h2><?=h(t('delivery'))?></h2>
+                    <dl class="order-recipient">
+                        <div><dt><?=h(t('recipient'))?></dt><dd><?=h($order['name'])?></dd></div>
+                        <div><dt><?=h(t('phone_number'))?></dt><dd>+<?=h($order['phone'])?></dd></div>
+                        <div class="order-address"><dt><?=h(t('address'))?></dt><dd class="break-lines"><?=h($order['address'])?></dd></div>
+                        <?php if ($order['notes']): ?><div class="order-address"><dt><?=h(t('notes'))?></dt><dd class="break-lines"><?=h($order['notes'])?></dd></div><?php endif ?>
+                    </dl>
+                </section>
+                <div class="order-document-actions">
+                    <?php if (!$paymentIsPending): ?><a class="button secondary" href="<?=h($downloadUrl)?>"><?=h(t('download'))?></a><?php endif ?>
+                    <?=form('reorder')?><input type="hidden" name="number" value="<?=h($order['number'])?>"><button class="button secondary"><?=h(t('reorder'))?></button></form>
+                    <button type="button" class="button primary" data-dialog="confirm-order"><?=h(t('confirm_order'))?></button>
+                </div>
+            </div>
         </div>
     </div>
+    <?php orderConfirmationDialog($order,$downloadUrl,$confirmationNotice); ?>
     <div class="toast" aria-live="polite" data-toast hidden></div>
 <?php }
-function orderPaymentPanel(array $order,array $settings,string $url): void {
+function orderConfirmationEmailLink(array $order): void { ?>
+    <a class="button secondary" href="<?=h('mailto:'.ORDER_CONFIRMATION_EMAIL.'?subject='.rawurlencode(confirmationSubject($order)))?>"><?=h(ORDER_CONFIRMATION_EMAIL)?></a>
+<?php }
+function orderConfirmationDialog(array $order,string $downloadUrl,?string $notice): void { ?>
+    <dialog id="confirm-order" aria-labelledby="confirm-order-title">
+        <h2 id="confirm-order-title"><?=h(t('confirm_order'))?></h2>
+        <?php if ($notice!==null): ?>
+            <p><?=h($notice)?></p>
+            <form method="dialog" class="actions">
+                <button class="button secondary"><?=h(t('close'))?></button>
+                <a class="button primary" href="<?=h(path('/'))?>"><?=h(t('home'))?></a>
+            </form>
+        <?php else: ?>
+        <div class="order-payment-email">
+            <p><?=h(t('confirm_order_instructions'))?></p>
+            <div class="actions">
+                <a class="button secondary" href="<?=h($downloadUrl)?>"><?=h(t('download'))?></a>
+                <?php orderConfirmationEmailLink($order); ?>
+            </div>
+        </div>
+        <?=form('confirm_order','fields')?>
+            <label class="check">
+                <input type="checkbox" name="confirmation_ack" value="1" required>
+                <span><?=h(t('confirm_order_ack'))?></span>
+            </label>
+            <div class="actions">
+                <button class="button primary" type="submit" disabled><?=h(t('confirm_order_send'))?></button>
+                <button class="button secondary" formmethod="dialog" formnovalidate><?=h(t('cancel'))?></button>
+            </div>
+        </form>
+        <?php endif ?>
+    </dialog>
+<?php }
+function orderPaymentPanel(array $order,array $settings,string $downloadUrl,bool $confirmationSent): void {
     $totals=totals($order);
     $lines=['Tobapia · '.orderDisplayNumber($order),...orderLines($order,lang()),...array_map(fn($label,$value)=>$label.' '.$value,array_keys($totals),array_values($totals)),
         t('name').' '.$order['name'],t('whatsapp').' +'.$order['phone'],t('address').' '.$order['address'],t('notes').' '.$order['notes']];
@@ -507,23 +560,23 @@ function orderPaymentPanel(array $order,array $settings,string $url): void {
     <section class="panel qr-panel">
         <h2><?=h(t('payment'))?></h2>
         <?php if ($order['qr']): $qr=imageUrl($order['qr']).'?order='.rawurlencode($order['number']); ?>
-            <?php if (!$order['demo']): ?><p class="payment-instruction"><?=h(t('payment_scan_note'))?></p><?php endif ?>
+            <?php if ($order['demo']): ?><p class="order-payment-message"><?=h(t('demo_payment_warning'))?></p><?php endif ?>
+            <p class="payment-instruction"><?=h(t('payment_scan_note'))?></p>
             <a class="qr-link" href="<?=h($qr)?>" target="_blank" rel="noopener" aria-label="<?=h(t('qr_open'))?>"><img src="<?=h($qr)?>" width="240" height="240" alt="<?=h(t('qr'))?>"></a>
         <?php else: ?><p class="order-payment-message"><?=h(t('qr_missing'))?></p><?php endif ?>
+        <div class="order-payment-email">
+            <?php if ($confirmationSent): ?>
+                <p role="status"><?=h(t('confirm_order_sent'))?></p>
+            <?php else: ?>
+                <p><?=h(t('confirm_order_instructions'))?></p>
+                <?php orderConfirmationEmailLink($order); ?>
+            <?php endif ?>
+        </div>
         <div class="actions">
             <?php if ($settings['phone'] && !$order['demo']): ?><a class="button primary" href="https://wa.me/<?=h($settings['phone'])?>?text=<?=rawurlencode($message)?>" target="_blank" rel="noopener"><?=h(t('contact'))?></a><?php endif ?>
             <button class="button secondary" type="button" data-copy="copy-order" data-copied="<?=h(t('copied'))?>"><?=h(t('copy'))?></button>
+            <a class="button secondary" href="<?=h($downloadUrl)?>"><?=h(t('download'))?></a>
         </div>
-        <?php if (is_file(PAYMENT_REFERENCE)): ?>
-        <details class="order-disclosure">
-            <summary><?=h(t('payment_image_guide'))?></summary>
-            <figure class="payment-reference">
-                <figcaption><?=h(t($order['demo'] ? 'payment_reference_demo' : 'payment_reference'))?></figcaption>
-                <?php if ($order['demo']): ?><p class="payment-instruction"><?=h(t('payment_example'))?> <q><?=h(t('payment_scan_note'))?></q></p><?php endif ?>
-                <img src="<?=h(path($url.'/payment-image'))?>" width="1135" height="1600" loading="lazy" alt="<?=h(t('payment_reference_image'))?>">
-            </figure>
-        </details>
-        <?php endif ?>
         <dialog id="copy-order"><h2><?=h(t('copy'))?></h2><textarea rows="10" readonly aria-label="<?=h(t('copy'))?>"><?=h($message)?></textarea><form method="dialog"><button class="button secondary"><?=h(t('cancel'))?></button></form></dialog>
     </section>
 <?php }

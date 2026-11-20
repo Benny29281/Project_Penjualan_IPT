@@ -10,7 +10,7 @@ function db(): PDO {
     if (!is_dir(DATA)) mkdir(DATA, 0700);
     $db = new PDO('sqlite:'.DATA.'/tobapia.sqlite', null, null, [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
     $db->exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
-    if ((int)$db->query('PRAGMA user_version')->fetchColumn()<3) {
+    if ((int)$db->query('PRAGMA user_version')->fetchColumn()<4) {
         atomic(function () use ($db) {
             $version=(int)$db->query('PRAGMA user_version')->fetchColumn();
             if ($version<1) {
@@ -40,6 +40,9 @@ function db(): PDO {
                     );
                     CREATE UNIQUE INDEX orders_document_number ON orders(document_number);
                     PRAGMA user_version=3;");
+            }
+            if ($version<4) {
+                $db->exec('ALTER TABLE orders ADD COLUMN confirmation_sent_at TEXT; PRAGMA user_version=4;');
             }
         });
     }

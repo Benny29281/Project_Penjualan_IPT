@@ -1,4 +1,10 @@
 <?php
+const ORDER_CONFIRMATION_EMAIL='tobapia06@gmail.com';
+
+function confirmationSubject(array $order): string {
+    return ($order['demo'] ? '[Demo] ' : '').'Confirm Order_'.orderDisplayNumber($order);
+}
+
 function buyCheckoutToken(): ?string {
     return preg_match('~^/checkout/buy/([0-9a-f]{48})$~D',ROUTE,$match) ? $match[1] : null;
 }
@@ -60,7 +66,7 @@ function storefrontPost(string $action, array $s): string {
             $id=integer(input('variant'),1);
             $isDetail=$action==='add_product';
             $delta=$isDetail ? integer(input('quantity'),1,99) : integer(input('delta'),-99,1);
-            [$cart,$qty]=atomic(function () use ($id,$delta) {
+            [$cart,$qty,$selected]=atomic(function () use ($id,$delta) {
                 $cart=cart();
                 $qty=max(0,($cart[$id] ?? 0)+$delta);
                 if ($delta>0 && $qty>0) {
@@ -70,21 +76,40 @@ function storefrontPost(string $action, array $s): string {
                 if ($qty>0) $cart[$id]=$qty;
                 else unset($cart[$id]);
                 saveCart($cart);
-                return [$cart,$qty];
+                return [$cart,$qty,$v ?? null];
             });
             if (($_SERVER['HTTP_ACCEPT'] ?? '')==='application/json') {
                 $quote=quote($cart,$s);
+                $response=['qty'=>$qty,'count'=>array_sum($cart),'total'=>money($quote['total']),'subtotal'=>money($quote['subtotal'])];
+                if ($isDetail) {
+                    $response['remaining']=min(99,(int)$selected['stock'])-$qty;
+                    $response['message']=t('added_cart');
+                }
                 header('Content-Type: application/json; charset=utf-8');
-                echo json(['qty'=>$qty,'count'=>array_sum($cart),'total'=>money($quote['total']),'subtotal'=>money($quote['subtotal'])]);
+                echo json($response);
                 exit;
             }
-            if ($isDetail) flash(t('added_cart'));
-            return $isDetail || ROUTE==='/cart' ? '/cart' : '/#products';
+            if ($isDetail) {
+                flash(t('added_cart'));
+                return '/products/'.$selected['product_id'].'?unit='.rawurlencode($selected['unit']).'#purchase';
+            }
+            return ROUTE==='/cart' ? '/cart' : '/#products';
         case 'clear':
             saveCart([]);
             return '/cart';
         case 'checkout':
             return '/orders/'.checkout(buyCheckoutToken());
+        case 'confirm_order':
+            requireThat((bool)preg_match('~^/orders/(TBP-[A-F0-9]{14})$~D',ROUTE,$match),t('order_missing'));
+            requireThat(input('confirmation_ack')==='1',t('confirm_order_ack_required'));
+            atomic(function () use ($match) {
+                $order=lookup($match[1]);
+                if ($order['confirmation_sent_at']) return;
+                requireThat(paymentPending($order),t('confirm_order_unavailable'));
+                run('UPDATE orders SET confirmation_sent_at=CURRENT_TIMESTAMP WHERE id=?',[$order['id']]);
+            });
+            flash(t('confirm_order_sent'));
+            return '/';
         case 'signup':
             rate('signup',8,900);
             atomic(fn()=>newUser('customer',input('name'),loginId(input('identity')),input('password',100)));

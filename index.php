@@ -82,23 +82,21 @@ try {
         exit;
     }
 
-    if (preg_match('~^/(admin/)?orders/(TBP-[A-F0-9]{14})/pdf(?:/(03|05))?$~D',ROUTE,$match)) {
+    if (preg_match('~^/(admin/)?orders/(TBP-[A-F0-9]{14})/pdf(?:/05)?$~D',ROUTE,$match)) {
         requireThat($admin || ($_SESSION['age'] ?? '')==='allowed',t('age_denied'));
-        sendPdf(lookup($match[2],$admin),$admin ? 'id' : lang(),$match[3] ?? '05');
+        sendPdf(lookup($match[2],$admin),$admin ? 'id' : lang());
     }
-    if (preg_match('~^/orders/(TBP-[A-F0-9]{14})/(payment-image|confirmation-image)$~D',ROUTE,$match)) {
-        $isPayment=$match[2]==='payment-image';
-        $source=$isPayment ? PAYMENT_REFERENCE : EMAIL_CONFIRMATION_IMAGE;
+    if (preg_match('~^/orders/(TBP-[A-F0-9]{14})/confirmation-image$~D',ROUTE,$match)) {
         try {
             requireThat(($_SESSION['age'] ?? '')==='allowed',t('age_denied'));
-            $order=lookup($match[1]);
-            requireThat((!$isPayment || paymentPending($order)) && is_file($source),t('order_missing'));
+            lookup($match[1]);
+            requireThat(is_file(EMAIL_CONFIRMATION_IMAGE),t('order_missing'));
         } catch (DomainException) {
             http_response_code(404);
             exit;
         }
         header('Content-Type: image/jpeg');
-        readfile($source);
+        readfile(EMAIL_CONFIRMATION_IMAGE);
         exit;
     }
     if ($admin && preg_match('~^/admin/export/(orders|reports|template)$~D',ROUTE,$match)) adminExport($match[1]);
@@ -118,6 +116,10 @@ try {
         exit;
     }
     $error=t('error');
+}
+if (ROUTE==='/' && $_SERVER['REQUEST_METHOD']==='GET' && $error==='' && PHP_SAPI==='cli-server'
+    && !ini_get('zlib.output_compression') && function_exists('ob_gzhandler')) {
+    ob_start('ob_gzhandler');
 }
 if ($admin) adminPage($s,$error);
 elseif (($_SESSION['age'] ?? '')!=='allowed') agePage($s,$error);

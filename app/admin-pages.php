@@ -114,8 +114,7 @@ function adminOrder(array $o,bool $owner): void {
             <?php if ($o['notes']): ?><p class="break-lines"><?=h($o['notes'])?></p><?php endif ?>
             <h3>Pernyataan usia</h3><p><?=h($o['age_statement'])?></p><p class="muted"><?=h(shortDate($o['age_at']))?></p>
             <?php if ($o['paid_at']): ?><p>Verifikasi pembayaran <?=h(shortDate($o['paid_at']))?> · <?=h(row('SELECT name FROM users WHERE id=?',[$o['paid_by']])['name'] ?? '')?></p><?php endif ?>
-            <div class="actions"><a class="button secondary" href="<?=h(path(ROUTE.'/pdf/05'))?>"><?=h(t('pdf_with_price','id'))?></a>
-            <a class="button secondary" href="<?=h(path(ROUTE.'/pdf/03'))?>"><?=h(t('pdf_without_price','id'))?></a>
+            <div class="actions"><a class="button secondary" href="<?=h(path(ROUTE.'/pdf/05'))?>"><?=h(t('download','id'))?></a>
             <?php if (!$o['demo']): ?><a class="button secondary" href="https://wa.me/<?=h($o['phone'])?>" target="_blank" rel="noopener">Hubungi via WhatsApp</a><?php endif ?></div>
         </section>
         <div class="stack">
