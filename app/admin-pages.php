@@ -156,6 +156,7 @@ function adminProducts(): void {
 function adminProduct(int $id): void {
     $p=$id ? row('SELECT * FROM products WHERE id=?',[$id]) : [];
     requireThat(!$id || $p,'Produk tidak ditemukan.');
+    backLink('/admin/products',false);
     heading($p['name_en'] ?? 'Tambah produk','Katalog');
     $v=$id ? array_column(rows('SELECT * FROM variants WHERE product_id=?',[$id]),null,'unit') : [];
     $descriptions=decode($p['descriptions'] ?? '{}');
