@@ -137,7 +137,8 @@ function adminPost(string $action, array $s): string {
                 $email=input('notify');
                 requireThat($email==='' || (bool)filter_var($email,FILTER_VALIDATE_EMAIL),'Email notifikasi tidak valid.');
                 foreach (['qr','logo'] as $kind) {
-                    if (($_FILES[$kind]['error'] ?? UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_NO_FILE) $s[$kind]=storeImage($_FILES[$kind],$kind);
+                    if ($kind==='logo' && input('use_default_logo')==='1') $s[$kind]='';
+                    elseif (($_FILES[$kind]['error'] ?? UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_NO_FILE) $s[$kind]=storeImage($_FILES[$kind],$kind);
                     saveSetting($kind,$s[$kind]);
                 }
                 requireThat($mode==='demo' || ($phone && $s['qr']), 'Isi WhatsApp dan unggah QR pembayaran sebelum mengaktifkan mode operasional.');

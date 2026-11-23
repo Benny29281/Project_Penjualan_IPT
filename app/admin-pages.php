@@ -255,6 +255,9 @@ function adminSettings(array $s): void {
     field('logo','Logo toko','','file',false,'accept="image/jpeg,image/png,image/webp"');
     field('qr','QR pembayaran','','file',false,'accept="image/jpeg,image/png,image/webp"'); ?>
     </div>
+    <?php if ($s['logo']): ?>
+        <label class="check"><input type="checkbox" name="use_default_logo" value="1"> Gunakan logo bawaan Tobapia</label>
+    <?php endif ?>
     <div class="media-grid"><?php foreach (['logo','qr'] as $kind): if (!$s[$kind]) continue; ?>
         <img class="config-image" src="<?=h(imageUrl($s[$kind]))?>" alt="<?=h(strtoupper($kind))?>" width="100" height="100">
     <?php endforeach ?></div>
