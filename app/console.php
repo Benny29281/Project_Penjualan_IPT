@@ -4,8 +4,17 @@ define('LOCALE','id');
 require __DIR__.'/i18n.php';
 require __DIR__.'/core.php';
 
+if (($argv[1] ?? '')==='expire-orders') {
+    try {
+        fwrite(STDOUT,expireUnconfirmedOrders()." pesanan dibatalkan otomatis.\n");
+        exit(0);
+    } catch (Throwable $e) {
+        fwrite(STDERR,$e->getMessage().PHP_EOL);
+        exit(1);
+    }
+}
 if (($argv[1] ?? '')!=='owner' || empty($argv[2])) {
-    fwrite(STDERR,"Usage: php app/console.php owner <email>\n");
+    fwrite(STDERR,"Usage: php app/console.php owner <email> | expire-orders\n");
     exit(1);
 }
 try {

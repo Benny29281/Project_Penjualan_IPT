@@ -1,7 +1,7 @@
 <?php
 const CATEGORIES = ['TEREA', 'IQOS ILUMA i', 'IQOS ILUMA i ONE', 'IQOS ILUMA i PRIME', 'Marlboro', 'Esse'];
 const EDITIONS = ['Indonesia', 'South Korea', 'Japan', 'Uzbekistan', 'Italy'];
-const STATUSES = ['new','pending','paid','processing','shipped','complete','cancelled'];
+const STATUSES = ['new','pending','paid','processing','shipped','delivered','complete','cancelled','refunded'];
 
 function seed(): void {
     $devices = [

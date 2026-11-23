@@ -3,6 +3,7 @@ declare(strict_types=1);
 require __DIR__.'/seed.php';
 date_default_timezone_set('Asia/Jakarta');
 define('DATA', PHP_SAPI==='cli' || PHP_SAPI==='cli-server' ? (getenv('TOBAPIA_DATA_DIR') ?: __DIR__.'/../storage') : __DIR__.'/../storage');
+const PAYMENT_CONFIRMATION_WINDOW = 20 * 60 * 60;
 
 function db(): PDO {
     static $db;
@@ -10,7 +11,7 @@ function db(): PDO {
     if (!is_dir(DATA)) mkdir(DATA, 0700);
     $db = new PDO('sqlite:'.DATA.'/tobapia.sqlite', null, null, [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
     $db->exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
-    if ((int)$db->query('PRAGMA user_version')->fetchColumn()<4) {
+    if ((int)$db->query('PRAGMA user_version')->fetchColumn()<5) {
         atomic(function () use ($db) {
             $version=(int)$db->query('PRAGMA user_version')->fetchColumn();
             if ($version<1) {
@@ -43,6 +44,11 @@ function db(): PDO {
             }
             if ($version<4) {
                 $db->exec('ALTER TABLE orders ADD COLUMN confirmation_sent_at TEXT; PRAGMA user_version=4;');
+            }
+            if ($version<5) {
+                $db->exec("CREATE INDEX orders_unconfirmed_created ON orders(created)
+                    WHERE status IN ('new','pending') AND paid_at IS NULL AND confirmation_sent_at IS NULL;
+                    PRAGMA user_version=5;");
             }
         });
     }
@@ -234,6 +240,26 @@ function orderLines(array $order, string $locale): array {
     return $lines;
 }
 function paymentPending(array $order): bool { return in_array($order['status'],['new','pending'],true); }
+function awaitingPaymentConfirmation(array $order): bool {
+    return paymentPending($order) && !$order['paid_at'] && !$order['confirmation_sent_at'];
+}
+function paymentConfirmationDeadline(array $order): int {
+    return strtotime($order['created'].' UTC')+PAYMENT_CONFIRMATION_WINDOW;
+}
+function expireUnconfirmedOrders(): int {
+    $cutoff=gmdate('Y-m-d H:i:s',time()-PAYMENT_CONFIRMATION_WINDOW);
+    $eligible="status IN ('new','pending') AND paid_at IS NULL AND confirmation_sent_at IS NULL AND created<=?";
+    if (!row("SELECT 1 FROM orders WHERE $eligible LIMIT 1",[$cutoff])) return 0;
+
+    return atomic(function () use ($eligible,$cutoff) {
+        $expired=rows("SELECT id FROM orders WHERE $eligible",[$cutoff]);
+        foreach ($expired as $order) {
+            run("UPDATE orders SET status='cancelled' WHERE id=?",[$order['id']]);
+            run("INSERT INTO timeline(order_id,actor,status) VALUES (?,'Sistem','payment_expired')",[$order['id']]);
+        }
+        return count($expired);
+    });
+}
 function totals(array $data, ?string $locale=null): array {
     $lines = [t('subtotal',$locale)=>money($data['subtotal'])];
     if ($data['terea']) $lines[t('terea_shipping',$locale)] = money($data['terea']);

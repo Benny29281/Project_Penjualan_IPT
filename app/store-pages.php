@@ -47,7 +47,7 @@ function storePage(array $s,string $error): void {
                 '/cart'=>cartPage($s,false), '/checkout'=>cartPage($s,true),
                 '/account'=>accountPage(), '/orders'=>ordersPage(), '/about'=>aboutPage($s),
                 default=>preg_match('~^/orders/(TBP-[A-F0-9]{14})$~D',ROUTE,$match)
-                    ? orderPage(lookup($match[1]),$s) : missingPage()
+                    ? orderPage(openOrderPayment($match[1]),$s) : missingPage()
             };
         } catch (DomainException $e) { http_response_code(404); heading($e->getMessage()); } ?>
     </main>
@@ -463,8 +463,7 @@ function orderPage(array $order,array $s): void {
     $url='/orders/'.$order['number'];
     $downloadUrl=path($url.'/pdf/05');
     $paymentIsPending=paymentPending($order);
-    $confirmationSent=!empty($order['confirmation_sent_at']);
-    $confirmationNotice=$paymentIsPending || $confirmationSent ? null : t('confirm_order_unavailable');
+    $awaitingConfirmation=awaitingPaymentConfirmation($order);
     ?>
     <div class="order-detail-page">
         <nav class="order-breadcrumb" aria-label="<?=h(t('orders'))?>">
@@ -489,8 +488,8 @@ function orderPage(array $order,array $s): void {
                 <div class="order-totals"><?php showTotals($order); ?></div>
             </section>
             <div class="order-sidebar stack">
-                <?php if ($paymentIsPending): orderPaymentPanel($order,$s,$downloadUrl,$confirmationSent); endif ?>
-                <section class="panel"><h2><?=h(t('timeline'))?></h2>
+                <?php if ($paymentIsPending): orderPaymentPanel($order,$s,$downloadUrl,$awaitingConfirmation); endif ?>
+                <section class="panel order-timeline-panel"><h2><?=h(t('timeline'))?></h2>
                     <?php timeline($order); ?>
                     <?php if ($order['tracking']): ?><p class="order-tracking"><strong><?=h(t('tracking'))?></strong> <?=h($order['tracking'])?></p><?php endif ?>
                 </section>
@@ -508,27 +507,19 @@ function orderPage(array $order,array $s): void {
                 <div class="order-document-actions">
                     <?php if (!$paymentIsPending): ?><a class="button secondary" href="<?=h($downloadUrl)?>"><?=h(t('download'))?></a><?php endif ?>
                     <?=form('reorder')?><input type="hidden" name="number" value="<?=h($order['number'])?>"><button class="button secondary"><?=h(t('reorder'))?></button></form>
-                    <button type="button" class="button primary" data-dialog="confirm-order"><?=h(t('confirm_order'))?></button>
                 </div>
             </div>
         </div>
     </div>
-    <?php orderConfirmationDialog($order,$downloadUrl,$confirmationNotice); ?>
+    <?php if ($awaitingConfirmation): orderConfirmationDialog($order,$downloadUrl); endif ?>
     <div class="toast" aria-live="polite" data-toast hidden></div>
 <?php }
 function orderConfirmationEmailLink(array $order): void { ?>
     <a class="button secondary" href="<?=h('mailto:'.ORDER_CONFIRMATION_EMAIL.'?subject='.rawurlencode(confirmationSubject($order)))?>"><?=h(ORDER_CONFIRMATION_EMAIL)?></a>
 <?php }
-function orderConfirmationDialog(array $order,string $downloadUrl,?string $notice): void { ?>
+function orderConfirmationDialog(array $order,string $downloadUrl): void { ?>
     <dialog id="confirm-order" aria-labelledby="confirm-order-title">
         <h2 id="confirm-order-title"><?=h(t('confirm_order'))?></h2>
-        <?php if ($notice!==null): ?>
-            <p><?=h($notice)?></p>
-            <form method="dialog" class="actions">
-                <button class="button secondary"><?=h(t('close'))?></button>
-                <a class="button primary" href="<?=h(path('/'))?>"><?=h(t('home'))?></a>
-            </form>
-        <?php else: ?>
         <div class="order-payment-email">
             <p><?=h(t('confirm_order_instructions'))?></p>
             <div class="actions">
@@ -546,10 +537,9 @@ function orderConfirmationDialog(array $order,string $downloadUrl,?string $notic
                 <button class="button secondary" formmethod="dialog" formnovalidate><?=h(t('cancel'))?></button>
             </div>
         </form>
-        <?php endif ?>
     </dialog>
 <?php }
-function orderPaymentPanel(array $order,array $settings,string $downloadUrl,bool $confirmationSent): void {
+function orderPaymentPanel(array $order,array $settings,string $downloadUrl,bool $awaitingConfirmation): void {
     $totals=totals($order);
     $lines=['Tobapia · '.orderDisplayNumber($order),...orderLines($order,lang()),...array_map(fn($label,$value)=>$label.' '.$value,array_keys($totals),array_values($totals)),
         t('name').' '.$order['name'],t('whatsapp').' +'.$order['phone'],t('address').' '.$order['address'],t('notes').' '.$order['notes']];
@@ -559,21 +549,24 @@ function orderPaymentPanel(array $order,array $settings,string $downloadUrl,bool
     ?>
     <section class="panel qr-panel">
         <h2><?=h(t('payment'))?></h2>
-        <?php if ($order['qr']): $qr=imageUrl($order['qr']).'?order='.rawurlencode($order['number']); ?>
+        <?php if ($awaitingConfirmation):
+            $remaining=max(0,paymentConfirmationDeadline($order)-time()); ?>
             <?php if ($order['demo']): ?><p class="order-payment-message"><?=h(t('demo_payment_warning'))?></p><?php endif ?>
-            <p class="payment-instruction"><?=h(t('payment_scan_note'))?></p>
-            <a class="qr-link" href="<?=h($qr)?>" target="_blank" rel="noopener" aria-label="<?=h(t('qr_open'))?>"><img src="<?=h($qr)?>" width="240" height="240" alt="<?=h(t('qr'))?>"></a>
-        <?php else: ?><p class="order-payment-message"><?=h(t('qr_missing'))?></p><?php endif ?>
-        <div class="order-payment-email">
-            <?php if ($confirmationSent): ?>
-                <p role="status"><?=h(t('confirm_order_sent'))?></p>
-            <?php else: ?>
+            <p class="order-payment-message" role="timer" aria-label="<?=h(t('payment_time_left'))?>">
+                <strong data-payment-countdown="<?=$remaining?>"><?=gmdate('H:i:s',$remaining)?></strong>
+            </p>
+            <?php if ($order['qr']): $qr=imageUrl($order['qr']).'?order='.rawurlencode($order['number']); ?>
+                <p class="payment-instruction"><?=h(t('payment_scan_note'))?></p>
+                <a class="qr-link" href="<?=h($qr)?>" target="_blank" rel="noopener" aria-label="<?=h(t('qr_open'))?>"><img src="<?=h($qr)?>" width="240" height="240" alt="<?=h(t('qr'))?>"></a>
+            <?php else: ?><p class="order-payment-message"><?=h(t('qr_missing'))?></p><?php endif ?>
+            <div class="order-payment-email">
                 <p><?=h(t('confirm_order_instructions'))?></p>
                 <?php orderConfirmationEmailLink($order); ?>
-            <?php endif ?>
-        </div>
+            </div>
+        <?php else: ?><p class="order-payment-message" role="status"><?=h(t('confirm_order_sent'))?></p><?php endif ?>
         <div class="actions">
-            <?php if ($settings['phone'] && !$order['demo']): ?><a class="button primary" href="https://wa.me/<?=h($settings['phone'])?>?text=<?=rawurlencode($message)?>" target="_blank" rel="noopener"><?=h(t('contact'))?></a><?php endif ?>
+            <?php if ($awaitingConfirmation): ?><button type="button" class="button primary" data-dialog="confirm-order"><?=h(t('confirm_order'))?></button><?php endif ?>
+            <?php if ($settings['phone'] && !$order['demo']): ?><a class="button secondary" href="https://wa.me/<?=h($settings['phone'])?>?text=<?=rawurlencode($message)?>" target="_blank" rel="noopener"><?=h(t('contact'))?></a><?php endif ?>
             <button class="button secondary" type="button" data-copy="copy-order" data-copied="<?=h(t('copied'))?>"><?=h(t('copy'))?></button>
             <a class="button secondary" href="<?=h($downloadUrl)?>"><?=h(t('download'))?></a>
         </div>

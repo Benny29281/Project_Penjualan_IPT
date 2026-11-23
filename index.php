@@ -32,6 +32,7 @@ $admin=ROUTE==='/admin' || str_starts_with(ROUTE,'/admin/');
 $error='';
 $s=[];
 try {
+    expireUnconfirmedOrders();
     $s=settings();
     if ($_SERVER['REQUEST_METHOD']==='POST') {
         requireThat(hash_equals(token(),input('csrf')),t('refresh'));
@@ -74,7 +75,8 @@ try {
         if ($image['kind']==='qr' && !currentUser(true)) {
             try {
                 $order=lookup(query('order'));
-                requireThat($order['qr']===$image['id'] && paymentPending($order),t('order_missing'));
+                requireThat($order['qr']===$image['id'] && awaitingPaymentConfirmation($order)
+                    && time()<paymentConfirmationDeadline($order),t('order_missing'));
             } catch (DomainException) { http_response_code(404); exit; }
         }
         header('Content-Type: '.$image['mime']);
@@ -101,6 +103,7 @@ try {
     }
     if ($admin && preg_match('~^/admin/export/(orders|reports|template)$~D',ROUTE,$match)) adminExport($match[1]);
 } catch (DomainException $e) {
+    if (in_array($action ?? '',['confirm_order','order_update'],true)) expireUnconfirmedOrders();
     $error=$e->getMessage();
     if (($_SERVER['HTTP_ACCEPT'] ?? '')==='application/json') {
         http_response_code(422);

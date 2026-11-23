@@ -1,6 +1,9 @@
 const languageSelect = document.querySelector('[data-language-select]');
 languageSelect?.addEventListener('change', () => languageSelect.form.requestSubmit());
 
+const productEditionFilter = document.querySelector('[data-product-edition-filter]');
+productEditionFilter?.addEventListener('change', () => productEditionFilter.form.requestSubmit());
+
 const pageBack = document.querySelector('[data-back-link]');
 pageBack?.addEventListener('click', event => {
   if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
@@ -125,6 +128,22 @@ if (acknowledgment) {
   });
   window.addEventListener('pageshow', syncConfirmation);
   syncConfirmation();
+}
+
+const paymentCountdown = document.querySelector('[data-payment-countdown]');
+if (paymentCountdown) {
+  const expiresAt = Date.now() + Number(paymentCountdown.dataset.paymentCountdown) * 1000;
+  const timer = setInterval(() => {
+    const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+    const hours = Math.floor(remaining / 3600);
+    const minutes = Math.floor(remaining / 60) % 60;
+    const seconds = remaining % 60;
+    paymentCountdown.textContent = [hours, minutes, seconds].map(value => String(value).padStart(2, '0')).join(':');
+    if (remaining === 0) {
+      clearInterval(timer);
+      window.location.reload();
+    }
+  }, 1000);
 }
 
 const quantityInput = document.querySelector('#product-quantity');

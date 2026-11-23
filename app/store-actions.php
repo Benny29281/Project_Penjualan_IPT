@@ -51,6 +51,25 @@ function checkout(?string $buyToken=null): string {
     }
     return $number;
 }
+function openOrderPayment(string $number): array {
+    $order=lookup($number);
+    if ($order['status']!=='new') return $order;
+
+    $order=atomic(function () use ($number) {
+        $order=lookup($number);
+        if ($order['status']!=='new' || (awaitingPaymentConfirmation($order) && time()>=paymentConfirmationDeadline($order))) return $order;
+
+        run("UPDATE orders SET status='pending' WHERE id=?",[$order['id']]);
+        run("INSERT INTO timeline(order_id,actor,status) VALUES (?,'Sistem','pending')",[$order['id']]);
+        $order['status']='pending';
+        return $order;
+    });
+    if ($order['status']==='new') {
+        expireUnconfirmedOrders();
+        return lookup($number);
+    }
+    return $order;
+}
 function storefrontPost(string $action, array $s): string {
     switch ($action) {
         case 'buy_now':
@@ -105,8 +124,10 @@ function storefrontPost(string $action, array $s): string {
             atomic(function () use ($match) {
                 $order=lookup($match[1]);
                 if ($order['confirmation_sent_at']) return;
-                requireThat(paymentPending($order),t('confirm_order_unavailable'));
-                run('UPDATE orders SET confirmation_sent_at=CURRENT_TIMESTAMP WHERE id=?',[$order['id']]);
+                requireThat(awaitingPaymentConfirmation($order),t('confirm_order_unavailable'));
+                $now=time();
+                requireThat($now<paymentConfirmationDeadline($order),t('payment_expired'));
+                run('UPDATE orders SET confirmation_sent_at=? WHERE id=?',[gmdate('Y-m-d H:i:s',$now),$order['id']]);
             });
             flash(t('confirm_order_sent'));
             return '/';

@@ -14,6 +14,8 @@ Storefront dan dashboard pemesanan berdasarkan [PRD Tobapia](<PRD (11).md>). Ver
 
 Untuk konfirmasi pesanan, pelanggan mengunduh PDF pesanan dan melampirkannya bersama bukti transfer ke email `tobapia06@gmail.com`. Setelah mengirim email dari aplikasi emailnya, pelanggan mencentang pernyataan dan menekan **Konfirmasi** untuk kembali ke beranda. Toko memverifikasi pembayaran secara manual.
 
+Pelanggan punya 20 jam sejak pesanan dibuat untuk menekan **Konfirmasi**. Pesanan yang belum dikonfirmasi pelanggan dan belum ditandai **Dibayar** akan dibatalkan otomatis. Stok baru berkurang saat admin menandai pesanan operasional **Dibayar**. Aplikasi memeriksa pesanan kedaluwarsa saat menerima permintaan. Untuk memproses pembatalan saat situs sepi, jalankan `php app/console.php expire-orders` lewat penjadwal server dengan PHP yang memiliki PDO SQLite dan menggunakan direktori data toko yang sama.
+
 - Mode demo memperlihatkan 14 varian perangkat dan 21 TEREA Indonesia dengan harga IDR dari PRD, stok simulasi dan ilustrasi sementara. Pesanan demo dikecualikan dari rekap penjualan dan pengurangan stok. Empat edisi luar negeri dimulai sebagai Hidden.
 - Satuan demo adalah pack dan slof. Pack sisa dibulatkan ke satu slof untuk ongkir. Owner dapat mengubah satuan, aturan pack, ukuran kardus, tarif TEREA dan tarif Device di menu **Ongkir**.
 - Di **Pengaturan toko**, Owner dapat mengunggah logo dan QR statis, memasukkan nomor WhatsApp penerima, mengubah peringatan per bahasa dan menyunting template pesan. Pengiriman email memerlukan konfigurasi `mail()` pada PHP. Pengiriman otomatis melalui WhatsApp memerlukan integrasi terpisah.

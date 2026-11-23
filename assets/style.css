@@ -185,6 +185,7 @@ textarea { resize: vertical; }
 .order-list-meta { display: grid; justify-items: end; gap: .25rem; }
 .actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
 .panel .actions { margin-top: .8rem; }
+.panel .user-role-form { align-items: flex-end; margin-top: 0; }
 .muted { color: var(--muted); font-size: .88rem; }
 .break-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
 .text-button { color: var(--pine); padding: 0; border: 0; background: transparent; text-decoration: underline; text-underline-offset: .2em; font-weight: 650; }
@@ -209,6 +210,7 @@ th { white-space: nowrap; color: var(--muted); font-size: .82rem; }
 .order-payment-email { margin-block: .9rem; }
 .order-payment-email .button { max-width: 100%; margin-top: .45rem; overflow-wrap: anywhere; }
 .order-payment-email .actions .button { margin-top: 0; }
+[data-payment-countdown] { font-variant-numeric: tabular-nums; white-space: nowrap; }
 #confirm-order .actions { margin-top: .9rem; }
 #confirm-order .primary:disabled { background: #e5e9e3; color: var(--muted); cursor: default; }
 .order-breadcrumb { display: flex; align-items: center; gap: .35rem; margin-bottom: .65rem; color: var(--leaf); font-size: .9rem; font-weight: 650; }
@@ -385,9 +387,10 @@ dialog textarea { min-width: min(400px, 70vw); }
   .catalog-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: .65rem; }
   .columns { grid-template-columns: minmax(0,1fr); }
   .order-content { grid-template-columns: minmax(0,1fr); grid-template-areas: none; grid-template-rows: auto; }
-  .order-sidebar { display: contents; }
-  .order-items-panel, .order-delivery-stack { grid-area: auto; }
-  .order-delivery-stack { order: 1; }
+  .order-sidebar, .order-delivery-stack { display: contents; }
+  .order-items-panel { grid-area: auto; }
+  .order-timeline-panel { order: 1; }
+  .order-document-actions { order: 2; }
   .order-totals { max-width: none; }
   .product-detail { grid-template-columns: minmax(0,1fr); gap: 1.15rem; }
   .detail-visual { width: 100%; max-width: 540px; margin-inline: auto; }

@@ -4,6 +4,15 @@ function adminAccess(bool $owner=false): array {
     requireThat($user && (!$owner || $user['role']==='owner'),'Akses dashboard diperlukan.');
     return $user;
 }
+function adminOrderStatuses(array $order): array {
+    $current=$order['status'];
+    $advance=['new'=>'pending','pending'=>'paid','paid'=>'processing','processing'=>'shipped','shipped'=>'delivered','delivered'=>'complete'];
+    $statuses=[$current];
+    if (isset($advance[$current])) $statuses[]=$advance[$current];
+    if (in_array($current,['new','pending','paid','processing'],true)) $statuses[]='cancelled';
+    if ($order['paid_at'] && in_array($current,['paid','processing','shipped','delivered','complete','cancelled'],true)) $statuses[]='refunded';
+    return $statuses;
+}
 function adminPost(string $action, array $s): string {
     if ($action==='admin_login') {
         login('admin',loginId(input('identity')),input('password',100));
@@ -19,6 +28,8 @@ function adminPost(string $action, array $s): string {
         $number=input('number');
         atomic(function () use ($number,$user) {
             $order=lookup($number,true);
+            $now=time();
+            requireThat(!awaitingPaymentConfirmation($order) || $now<paymentConfirmationDeadline($order),t('payment_expired','id'));
             $next=input('status');
             $tracking=input('tracking');
             $note=input('internal_note',1800);
@@ -27,9 +38,7 @@ function adminPost(string $action, array $s): string {
                 $extra=integer(input('extra'));
                 requireThat($extra===$order['extra'] || paymentPending($order),'Ongkir tambahan hanya bisa diubah sebelum pembayaran.');
             }
-            $advance=['new'=>'pending','pending'=>'paid','paid'=>'processing','processing'=>'shipped','shipped'=>'complete'];
-            requireThat($next===$order['status'] || $next===($advance[$order['status']] ?? null)
-                || ($next==='cancelled' && in_array($order['status'],['new','pending','paid','processing'],true)),'Perubahan status tidak valid.');
+            requireThat(in_array($next,adminOrderStatuses($order),true),'Perubahan status tidak valid.');
             if ($next==='shipped') requireThat($tracking!=='','Nomor resi wajib diisi.');
             if ($next==='paid' && $next!==$order['status'] && !$order['demo']) {
                 foreach (items($order['id']) as $item) {
@@ -37,12 +46,13 @@ function adminPost(string $action, array $s): string {
                     requireThat($changed===1,'Stok tidak cukup untuk '.productName(decode($item['names']),'en').'.');
                 }
             }
-            if ($next==='cancelled' && $order['paid_at'] && !$order['demo']) {
+            if (in_array($next,['cancelled','refunded'],true) && in_array($order['status'],['paid','processing'],true)
+                && $order['paid_at'] && !$order['demo']) {
                 foreach (items($order['id']) as $item) run('UPDATE variants SET stock=stock+? WHERE id=?',[$item['qty'],$item['variant_id']]);
             }
             $total=$order['subtotal']+$order['terea']+$order['device']+$extra;
             run('UPDATE orders SET status=?,tracking=?,internal_note=?,extra=?,total=?,paid_by=?,paid_at=? WHERE id=?',
-                [$next,$tracking,$note,$extra,$total,$next==='paid' && !$order['paid_at'] ? $user['id'] : $order['paid_by'],$next==='paid' ? ($order['paid_at'] ?: gmdate('Y-m-d H:i:s')) : $order['paid_at'],$order['id']]);
+                [$next,$tracking,$note,$extra,$total,$next==='paid' && !$order['paid_at'] ? $user['id'] : $order['paid_by'],$next==='paid' ? ($order['paid_at'] ?: gmdate('Y-m-d H:i:s',$now)) : $order['paid_at'],$order['id']]);
             if ($next!==$order['status']) run('INSERT INTO timeline(order_id,actor,status) VALUES (?,?,?)',[$order['id'],$user['login'],$next]);
             audit('Pesanan',$number.' · '.$order['status'].' → '.$next.' · '.money($total));
         });
@@ -296,7 +306,7 @@ function importProducts(): int {
 }
 function reportRows(): array {
     [$start,$end]=dateRange();
-    return rows("SELECT oi.category,oi.edition,json_extract(oi.names,'$.name_en') AS product,SUM(oi.qty) AS qty,SUM(oi.qty*oi.price) AS sales FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.demo=0 AND o.paid_at IS NOT NULL AND o.status<>'cancelled' AND date(o.paid_at,'+7 hours') BETWEEN ? AND ? GROUP BY oi.category,oi.edition,product ORDER BY sales DESC",[$start,$end]);
+    return rows("SELECT oi.category,oi.edition,json_extract(oi.names,'$.name_en') AS product,SUM(oi.qty) AS qty,SUM(oi.qty*oi.price) AS sales FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.demo=0 AND o.paid_at IS NOT NULL AND o.status NOT IN ('cancelled','refunded') AND date(o.paid_at,'+7 hours') BETWEEN ? AND ? GROUP BY oi.category,oi.edition,product ORDER BY sales DESC",[$start,$end]);
 }
 function dateRange(): array {
     $from=query('from'); $to=query('to');

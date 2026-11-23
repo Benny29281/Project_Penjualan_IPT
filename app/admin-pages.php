@@ -66,7 +66,7 @@ function adminHome(bool $owner): void {
     $metrics=['Pesanan baru'=>$status['new'] ?? 0,'Menunggu pembayaran'=>$status['pending'] ?? 0,'Perlu dikirim'=>($status['paid'] ?? 0)+($status['processing'] ?? 0)];
     $today=new DateTimeImmutable('today');
     if ($owner) foreach (['Omzet hari ini'=>$today,'Omzet minggu ini'=>$today->modify('monday this week'),'Omzet bulan ini'=>$today->modify('first day of this month')] as $label=>$date) {
-        $metrics[$label]=money((int)row("SELECT COALESCE(SUM(total),0) AS sum FROM orders WHERE demo=0 AND status<>'cancelled' AND date(paid_at,'+7 hours')>=?",[$date->format('Y-m-d')])['sum']);
+        $metrics[$label]=money((int)row("SELECT COALESCE(SUM(total),0) AS sum FROM orders WHERE demo=0 AND status NOT IN ('cancelled','refunded') AND date(paid_at,'+7 hours')>=?",[$date->format('Y-m-d')])['sum']);
     }
     ?>
     <div class="metrics"><?php foreach ($metrics as $label=>$value): ?><section class="panel metric"><p><?=h($label)?></p><strong><?=h($value)?></strong></section><?php endforeach ?></div>
@@ -101,10 +101,7 @@ function adminOrders(): void {
 function adminOrder(array $o,bool $owner): void {
     heading(orderDisplayNumber($o),'Detail pesanan');
     if ($o['demo']): ?><p class="alert">Pesanan demo</p><?php endif;
-    $advance=['new'=>'pending','pending'=>'paid','paid'=>'processing','processing'=>'shipped','shipped'=>'complete'];
-    $statuses=[$o['status']];
-    if (isset($advance[$o['status']])) $statuses[]=$advance[$o['status']];
-    if (in_array($o['status'],['new','pending','paid','processing'],true)) $statuses[]='cancelled';
+    $statuses=adminOrderStatuses($o);
     ?>
     <div class="columns">
         <section class="panel">
@@ -114,6 +111,10 @@ function adminOrder(array $o,bool $owner): void {
             <?php if ($o['notes']): ?><p class="break-lines"><?=h($o['notes'])?></p><?php endif ?>
             <h3>Pernyataan usia</h3><p><?=h($o['age_statement'])?></p><p class="muted"><?=h(shortDate($o['age_at']))?></p>
             <?php if ($o['paid_at']): ?><p>Verifikasi pembayaran <?=h(shortDate($o['paid_at']))?> · <?=h(row('SELECT name FROM users WHERE id=?',[$o['paid_by']])['name'] ?? '')?></p><?php endif ?>
+            <?php if (paymentPending($o)): ?>
+                <?php if ($o['confirmation_sent_at']): ?><p>Konfirmasi pelanggan diterima <?=h(shortDate($o['confirmation_sent_at']))?></p>
+                <?php else: ?><p><?=h(t('payment_deadline','id'))?> <?=h(shortDate(gmdate('Y-m-d H:i:s',paymentConfirmationDeadline($o))))?></p><?php endif ?>
+            <?php endif ?>
             <div class="actions"><a class="button secondary" href="<?=h(path(ROUTE.'/pdf/05'))?>"><?=h(t('download','id'))?></a>
             <?php if (!$o['demo']): ?><a class="button secondary" href="https://wa.me/<?=h($o['phone'])?>" target="_blank" rel="noopener">Hubungi via WhatsApp</a><?php endif ?></div>
         </section>
@@ -121,6 +122,7 @@ function adminOrder(array $o,bool $owner): void {
             <section class="panel"><h2>Proses pesanan</h2><?=form('order_update','fields')?>
             <input type="hidden" name="number" value="<?=h($o['number'])?>">
             <?php selectField('status','Status',array_combine($statuses,array_map(fn($x)=>t($x,'id'),$statuses)),$o['status']);
+            if (in_array('refunded',$statuses,true) && $o['status']!=='refunded'): ?><p class="muted">Pilih Dana dikembalikan setelah dana dikirim kembali ke pelanggan.</p><?php endif;
             field('tracking','Nomor resi',$o['tracking']); area('internal_note','Catatan internal',$o['internal_note']);
             if ($owner && paymentPending($o)) field('extra','Ongkir tambahan (IDR)',(string)$o['extra'],'number',false,'min="0"'); ?>
             <button class="button primary">Simpan perubahan</button></form></section>
@@ -130,15 +132,22 @@ function adminOrder(array $o,bool $owner): void {
 <?php }
 function adminProducts(): void {
     heading('Produk','Katalog');
-    $category=query('category'); $status=query('status'); $search='%'.query('q').'%';
-    $list=rows("SELECT p.*,COUNT(v.id) AS variants FROM products p LEFT JOIN variants v ON p.id=v.product_id WHERE (?='' OR p.category=?) AND (?='' OR p.status=?) AND p.name_en LIKE ? GROUP BY p.id ORDER BY p.id DESC",[$category,$category,$status,$status,$search]);
+    $category=query('category'); $edition=query('edition'); $status=query('status'); $search='%'.query('q').'%';
+    $editions=array_combine(EDITIONS,array_map(fn($value)=>t($value,'id'),EDITIONS));
+    $list=rows("SELECT p.*,COUNT(v.id) AS variants FROM products p LEFT JOIN variants v ON p.id=v.product_id
+        WHERE (?='' OR p.category=?) AND (?='' OR p.edition=?) AND (?='' OR p.status=?) AND p.name_en LIKE ?
+        GROUP BY p.id ORDER BY p.id DESC",[$category,$category,$edition,$edition,$status,$status,$search]);
     ?>
     <section class="panel">
         <form method="get" class="toolbar">
-            <?php field('q','Cari produk',query('q'),'search'); selectField('category','Kategori',[''=>'Semua']+choices(CATEGORIES),$category); selectField('status','Status',[''=>'Semua','draft'=>'Draft','published'=>'Published','hidden'=>'Hidden'],$status); ?>
+            <?php field('q','Cari produk',query('q'),'search');
+            selectField('category','Kategori',[''=>'Semua']+choices(CATEGORIES),$category);
+            selectField('edition','Edisi',[''=>'Semua']+$editions,$edition,'data-product-edition-filter');
+            selectField('status','Status',[''=>'Semua','draft'=>'Draft','published'=>'Published','hidden'=>'Hidden'],$status); ?>
             <button class="button primary">Terapkan</button><a class="button secondary" href="<?=h(path('/admin/products/new'))?>">Tambah produk</a>
         </form>
         <div class="table-wrap"><table><thead><tr><th>Produk</th><th>Kategori</th><th>Edisi</th><th>Status</th><th>Satuan</th></tr></thead><tbody>
+            <?php if (!$list): ?><tr><td colspan="5">Tidak ada produk yang cocok dengan filter.</td></tr><?php endif ?>
             <?php foreach ($list as $p): ?><tr><td><a href="<?=h(path('/admin/products/'.$p['id']))?>"><strong><?=h($p['name_en'])?></strong></a></td>
             <td><?=h($p['category'])?></td><td><?=h(t($p['edition'],'id'))?></td><td><span class="status"><?=h(ucfirst($p['status']))?></span></td><td><?=$p['variants']?></td></tr><?php endforeach ?>
         </tbody></table></div>
@@ -254,7 +263,7 @@ function adminSettings(array $s): void {
 <?php }
 function adminCustomers(): void {
     heading('Pelanggan','Dashboard');
-    $list=rows("SELECT phone,MAX(name) AS name,COUNT(*) AS orders,SUM(CASE WHEN paid_at IS NOT NULL AND status<>'cancelled' AND demo=0 THEN total ELSE 0 END) AS total FROM orders GROUP BY phone ORDER BY MAX(id) DESC");
+    $list=rows("SELECT phone,MAX(name) AS name,COUNT(*) AS orders,SUM(CASE WHEN paid_at IS NOT NULL AND status NOT IN ('cancelled','refunded') AND demo=0 THEN total ELSE 0 END) AS total FROM orders GROUP BY phone ORDER BY MAX(id) DESC");
     $accounts=rows("SELECT name,login,created FROM users WHERE role='customer' ORDER BY id DESC");
     ?>
     <section class="panel"><h2>Riwayat berdasarkan WhatsApp</h2><div class="table-wrap"><table><thead><tr><th>Nama</th><th>WhatsApp</th><th>Pesanan</th><th>Total belanja</th><th>Akses</th></tr></thead><tbody>
@@ -296,7 +305,11 @@ function adminUsers(int $id): void {
     <section class="panel"><div class="table-wrap"><table><thead><tr><th>Nama</th><th>Login</th><th>Peran</th></tr></thead><tbody>
     <?php foreach (rows("SELECT id,role,name,login FROM users WHERE role IN ('owner','staff') ORDER BY id") as $u): ?>
     <tr><td><?=h($u['name'])?></td><td><?=h($u['login'])?></td><td><?php if ($u['id']===$id): ?>Owner<?php else: ?>
-    <?=form('user_role','actions')?><input type="hidden" name="id" value="<?=$u['id']?>"><?php selectField('role','Peran',['staff'=>'Staf','owner'=>'Owner'],$u['role']); ?><button class="button secondary">Simpan</button></form>
+    <?=form('user_role','actions user-role-form')?>
+        <input type="hidden" name="id" value="<?=$u['id']?>">
+        <?php selectField('role','Peran',['staff'=>'Staf','owner'=>'Owner'],$u['role']); ?>
+        <button class="button secondary" type="submit">Simpan</button>
+    </form>
     <?php endif ?></td></tr><?php endforeach ?>
     </tbody></table></div></section>
 <?php }
