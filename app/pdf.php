@@ -38,7 +38,12 @@ function pdfWrap(string $text,int $size,string $font,int $width): array {
     return $lines;
 }
 function pdfOrderPages(array $order,string $locale,string $filename): array {
-    $margin=64; $right=1176; $bottom=1610;
+    $margin=64; $right=1176; $bottom=1400;
+    $template=@imagecreatefromjpeg(__DIR__.'/../Tobapia-Letter head-02.jpg.jpeg');
+    requireThat($template!==false,'Template invoice tidak dapat dibuka.');
+    $letterhead=imagescale($template,1240,1754);
+    imagedestroy($template);
+    requireThat($letterhead!==false,'Template invoice tidak dapat disesuaikan.');
     $canvases=[]; $canvas=null; $palette=[]; $y=0;
 
     $write=function (string $text,int $x,int $baseline,int $size=21,string $color='ink',bool $bold=false,bool $rightAlign=false) use (&$canvas,&$palette,$locale) {
@@ -46,9 +51,9 @@ function pdfOrderPages(array $order,string $locale,string $filename): array {
         if ($rightAlign) $x-=pdfTextWidth($text,$size,$font);
         imagettftext($canvas,$size,0,$x,$baseline,$palette[$color],$font,$text);
     };
-    $newPage=function () use (&$canvases,&$canvas,&$palette,&$y,$margin,$write,$locale,$filename) {
+    $newPage=function () use (&$canvases,&$canvas,&$palette,&$y,$letterhead,$margin,$write,$locale,$filename) {
         $canvas=imagecreatetruecolor(1240,1754);
-        imagefill($canvas,0,0,imagecolorallocate($canvas,255,255,255));
+        imagecopy($canvas,$letterhead,0,0,0,0,1240,1754);
         $palette=[
             'ink'=>imagecolorallocate($canvas,37,56,50),
             'green'=>imagecolorallocate($canvas,38,79,65),
@@ -56,9 +61,9 @@ function pdfOrderPages(array $order,string $locale,string $filename): array {
             'line'=>imagecolorallocate($canvas,223,232,224),
             'surface'=>imagecolorallocate($canvas,236,243,236),
         ];
-        $write(t('pdf_order_list',$locale),$margin,82,$canvases ? 27 : 36,'ink',true);
-        $write($filename,$margin,120,18,'muted');
-        $y=155;
+        $write(t('pdf_order_list',$locale),$margin,480,$canvases ? 27 : 36,'ink',true);
+        $write($filename,$margin,517,18,'muted');
+        $y=552;
         $canvases[]=$canvas;
     };
     $ensure=function (int $height) use (&$y,$bottom,$newPage): bool {
@@ -67,10 +72,11 @@ function pdfOrderPages(array $order,string $locale,string $filename): array {
         return true;
     };
     $paragraph=function (string $text,int $size=21,string $color='ink',bool $bold=false) use (&$y,$locale,$margin,$right,$ensure,$write) {
+        $lineHeight=$size+8;
         foreach (pdfWrap($text,$size,pdfFontFor($text,$locale,$bold),$right-$margin) as $line) {
-            $ensure($size+12);
+            $ensure($lineHeight);
             $write($line,$margin,$y,$size,$color,$bold);
-            $y+=$size+12;
+            $y+=$lineHeight;
         }
     };
     $newPage();
@@ -87,7 +93,8 @@ function pdfOrderPages(array $order,string $locale,string $filename): array {
     $y+=12;
     $paragraph(t('pdf_line_items',$locale).': '.count($items),18,'muted');
     $headers=['#',t('item',$locale),t('country',$locale),t('pdf_order_unit',$locale),t('quantity',$locale),t('pdf_unit_price',$locale),t('subtotal',$locale)];
-    $widths=[44,376,166,100,100,153,173];
+    $numberWidth=max(60,pdfTextWidth((string)count($items),18,pdfFont($locale))+24);
+    $widths=[$numberWidth,408-$numberWidth,166,112,100,153,173];
     $columns=[];
     $x=$margin;
     foreach ($widths as $width) {
@@ -126,8 +133,6 @@ function pdfOrderPages(array $order,string $locale,string $filename): array {
     };
     $headerRow=$renderRow($headers,true);
     $headerHeight=$heightOf($headerRow);
-    $ensure($headerHeight+60);
-    $paintRow($headerRow,true);
     foreach ($items as $index=>$item) {
         $names=decode($item['names']);
         $name=productName($names,$locale);
@@ -135,12 +140,13 @@ function pdfOrderPages(array $order,string $locale,string $filename): array {
         if (!str_starts_with(mb_strtolower($name),mb_strtolower($item['category']))) $name=$item['category'].' '.$name;
         $cells=[(string)($index+1),$name.($alternate ? "\n".$alternate : ''),t($item['edition'],$locale),t($item['unit'],$locale),(string)$item['qty'],money($item['price']),money($item['price']*$item['qty'])];
         $row=$renderRow($cells);
-        if ($ensure($heightOf($row))) $paintRow($headerRow,true);
+        $firstRow=$index===0;
+        if ($ensure($heightOf($row)+($firstRow ? $headerHeight : 0)) || $firstRow) $paintRow($headerRow,true);
         $paintRow($row);
     }
-    $y+=36;
     $totals=totals($order,$locale);
-    $ensure(39*count($totals));
+    $ensure(36+39*count($totals));
+    $y+=36;
     foreach ($totals as $label=>$value) {
         $total=$label===t('total',$locale);
         if ($total) imagefilledrectangle($canvas,$margin,$y-30,$right,$y+13,$palette['surface']);
@@ -151,9 +157,7 @@ function pdfOrderPages(array $order,string $locale,string $filename): array {
     $pages=[];
     foreach ($canvases as $index=>$page) {
         $canvas=$page;
-        imageline($canvas,$margin,1667,$right,1667,$palette['line']);
-        $write($filename,$margin,1695,15,'muted');
-        $write(t('pdf_page',$locale).' '.($index+1).' / '.count($canvases),$right,1695,15,'muted',false,true);
+        $write(t('pdf_page',$locale).' '.($index+1).' / '.count($canvases),$right,517,15,'muted',false,true);
         ob_start();
         imagejpeg($canvas,null,96);
         $pages[]=ob_get_clean();
