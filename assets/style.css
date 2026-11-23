@@ -437,6 +437,8 @@ dialog textarea { min-width: min(400px, 70vw); }
   .order-document-actions { width: 100%; }
   .order-document-actions > * { flex: 1 1 100%; }
   .order-document-actions .button { width: 100%; }
+  .order-confirm-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: stretch; }
+  .order-confirm-actions > form { display: grid; }
   .order-item-table table, .order-item-table tbody { display: block; }
   .order-item-table thead { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
   .order-item-table tbody tr { display: grid; grid-template-columns: minmax(0,.55fr) repeat(2,minmax(0,1fr)); gap: .45rem .6rem; padding: .7rem 0; border-bottom: 1px solid var(--border); }

@@ -504,9 +504,10 @@ function orderPage(array $order,array $s): void {
                         <?php if ($order['notes']): ?><div class="order-address"><dt><?=h(t('notes'))?></dt><dd class="break-lines"><?=h($order['notes'])?></dd></div><?php endif ?>
                     </dl>
                 </section>
-                <div class="order-document-actions">
+                <div class="order-document-actions<?=$awaitingConfirmation?' order-confirm-actions':''?>">
                     <?php if (!$paymentIsPending): ?><a class="button secondary" href="<?=h($downloadUrl)?>"><?=h(t('download'))?></a><?php endif ?>
                     <?=form('reorder')?><input type="hidden" name="number" value="<?=h($order['number'])?>"><button class="button secondary"><?=h(t('reorder'))?></button></form>
+                    <?php if ($awaitingConfirmation): ?><button type="button" class="button primary" data-dialog="confirm-order"><?=h(t('confirm_order'))?></button><?php endif ?>
                 </div>
             </div>
         </div>
@@ -565,7 +566,6 @@ function orderPaymentPanel(array $order,array $settings,string $downloadUrl,bool
             </div>
         <?php else: ?><p class="order-payment-message" role="status"><?=h(t('confirm_order_sent'))?></p><?php endif ?>
         <div class="actions">
-            <?php if ($awaitingConfirmation): ?><button type="button" class="button primary" data-dialog="confirm-order"><?=h(t('confirm_order'))?></button><?php endif ?>
             <?php if ($settings['phone'] && !$order['demo']): ?><a class="button secondary" href="https://wa.me/<?=h($settings['phone'])?>?text=<?=rawurlencode($message)?>" target="_blank" rel="noopener"><?=h(t('contact'))?></a><?php endif ?>
             <button class="button secondary" type="button" data-copy="copy-order" data-copied="<?=h(t('copied'))?>"><?=h(t('copy'))?></button>
             <a class="button secondary" href="<?=h($downloadUrl)?>"><?=h(t('download'))?></a>
