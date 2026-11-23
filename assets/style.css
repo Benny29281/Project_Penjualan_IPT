@@ -210,7 +210,6 @@ th { white-space: nowrap; color: var(--muted); font-size: .82rem; }
 .order-payment-email { margin-block: .9rem; }
 .order-payment-email .button { max-width: 100%; margin-top: .45rem; overflow-wrap: anywhere; }
 .order-payment-email .actions .button { margin-top: 0; }
-[data-payment-countdown] { font-variant-numeric: tabular-nums; white-space: nowrap; }
 #confirm-order .actions { margin-top: .9rem; }
 #confirm-order .primary:disabled { background: #e5e9e3; color: var(--muted); cursor: default; }
 .order-breadcrumb { display: flex; align-items: center; gap: .35rem; margin-bottom: .65rem; color: var(--leaf); font-size: .9rem; font-weight: 650; }
@@ -244,6 +243,8 @@ th { white-space: nowrap; color: var(--muted); font-size: .82rem; }
 .order-recipient dd { margin: 0; font-weight: 550; overflow-wrap: anywhere; }
 .order-address { grid-column: 1 / -1; }
 .order-payment-message { padding: .65rem .8rem; background: #f3f6f1; border-radius: .55rem; color: var(--muted); font-size: .9rem; }
+.order-payment-timer { container-type: inline-size; color: var(--pine); text-align: center; }
+.order-payment-timer strong { display: block; font-size: 2rem; font-size: clamp(1.75rem,22cqi,5rem); font-variant-numeric: tabular-nums; line-height: 1.1; white-space: nowrap; }
 .order-tracking { margin-top: 1rem; padding-top: .65rem; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 dialog { max-width: min(calc(100% - 1.4rem), 520px); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.4rem; color: var(--ink); box-shadow: var(--shadow); }
 dialog h2 { margin-bottom: .85rem; }

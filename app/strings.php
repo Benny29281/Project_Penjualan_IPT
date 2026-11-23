@@ -85,7 +85,7 @@ return [
 'pdf_order_unit'=>'Unit|Satuan|订购单位|주문 단위',
 'order_notes'=>'Order notes|Catatan pesanan|订单备注|주문 메모',
 'qr_open'=>'Open QR image|Buka gambar QR|打开二维码图片|QR 이미지 열기','download'=>'Download order PDF|Unduh PDF pesanan|下载订单 PDF|주문 PDF 다운로드',
-'contact'=>'Send to WhatsApp|Kirim ke WhatsApp|发送至 WhatsApp|WhatsApp으로 보내기','copy'=>'Copy order|Salin pesanan|复制订单|주문 복사','copied'=>'Order copied.|Pesanan disalin.|订单已复制。|주문이 복사되었습니다.',
+'copy'=>'Copy order|Salin pesanan|复制订单|주문 복사','copied'=>'Order copied.|Pesanan disalin.|订单已复制。|주문이 복사되었습니다.',
 'timeline'=>'Order timeline|Riwayat status|订单进度|주문 진행 상황','tracking'=>'Tracking number|Nomor resi|快递单号|운송장 번호',
 'login'=>'Sign in|Masuk|登录|로그인','signup'=>'Create account|Buat akun|创建账户|계정 만들기','logout'=>'Sign out|Keluar|退出登录|로그아웃',
 'identity'=>'Email or WhatsApp|Email atau WhatsApp|电子邮件或 WhatsApp|이메일 또는 WhatsApp','password'=>'Password|Kata sandi|密码|비밀번호',

@@ -553,7 +553,7 @@ function orderPaymentPanel(array $order,array $settings,string $downloadUrl,bool
         <?php if ($awaitingConfirmation):
             $remaining=max(0,paymentConfirmationDeadline($order)-time()); ?>
             <?php if ($order['demo']): ?><p class="order-payment-message"><?=h(t('demo_payment_warning'))?></p><?php endif ?>
-            <p class="order-payment-message" role="timer" aria-label="<?=h(t('payment_time_left'))?>">
+            <p class="order-payment-message order-payment-timer" role="timer" aria-label="<?=h(t('payment_time_left'))?>">
                 <strong data-payment-countdown="<?=$remaining?>"><?=gmdate('H:i:s',$remaining)?></strong>
             </p>
             <?php if ($order['qr']): $qr=imageUrl($order['qr']).'?order='.rawurlencode($order['number']); ?>
@@ -566,7 +566,6 @@ function orderPaymentPanel(array $order,array $settings,string $downloadUrl,bool
             </div>
         <?php else: ?><p class="order-payment-message" role="status"><?=h(t('confirm_order_sent'))?></p><?php endif ?>
         <div class="actions">
-            <?php if ($settings['phone'] && !$order['demo']): ?><a class="button secondary" href="https://wa.me/<?=h($settings['phone'])?>?text=<?=rawurlencode($message)?>" target="_blank" rel="noopener"><?=h(t('contact'))?></a><?php endif ?>
             <button class="button secondary" type="button" data-copy="copy-order" data-copied="<?=h(t('copied'))?>"><?=h(t('copy'))?></button>
             <a class="button secondary" href="<?=h($downloadUrl)?>"><?=h(t('download'))?></a>
         </div>
