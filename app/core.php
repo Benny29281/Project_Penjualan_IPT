@@ -277,6 +277,7 @@ function storeImage(array $file, string $kind): string {
     if ($kind==='product' && max($info[0],$info[1])>1000) {
         $image=imagescale($image,max(1,(int)round($info[0]*1000/max($info[0],$info[1]))),max(1,(int)round($info[1]*1000/max($info[0],$info[1]))));
     }
+    if ($kind==='logo') imagesavealpha($image,true);
     $mime=$kind==='product' ? 'image/webp' : 'image/png';
     $written=$kind==='product' ? imagewebp($image,DATA.'/'.$id,86) : imagepng($image,DATA.'/'.$id);
     imagedestroy($image);
